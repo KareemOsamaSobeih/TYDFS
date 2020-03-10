@@ -13,11 +13,11 @@ config.read('config.ini')
 
 
 # hard coded number (we agreed to choose that number)
-port = config['heartbeats']['port']
+port = config['Master']['alivePort']
 
 #list of ips related to each data_node
 
-ips = json.loads( config['datanodes']['ips'] )
+ips = json.loads( config['Master']['data_keepers_ips'] )
 
 #number of data_nodes
 n = len(ips)

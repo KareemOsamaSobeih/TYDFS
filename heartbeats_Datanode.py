@@ -9,11 +9,12 @@ config = ConfigParser()
 config.read('config.ini')
 
 # hard coded number (we agreed to choose that number)
-port = config['heartbeats']['port']
-# machine ip
-ip  = "127.0.0.4"
+port = config['DataKeeper']['alivePort']
 # data_node id
-topic = 4
+id = int(sys.argv[1])
+ips = json.loads( config['DataKeeper']['ips'] )
+# machine ip
+ip  = ips[id]
 
 context = zmq.Context()
 socket = context.socket(zmq.PUB)
