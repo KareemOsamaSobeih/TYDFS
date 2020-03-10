@@ -13,4 +13,5 @@ def download(filePath, addresses):
         downSocket.disconnect("tcp://%s:%s"%(address[0], address[1]))
     downSocket.close()
         
-download('data/Client/test1.mp4', [('127.0.0.1', '5000')])
+if __name__ == '__main__':
+    download('data/Client/test1.mp4', [('127.0.0.1', '5000')])

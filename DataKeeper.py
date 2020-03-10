@@ -10,5 +10,5 @@ def send(filePath):
         upSocket.send(file.read())
     upSocket.close()
 
-
-send("data/DataKeeper/SampleVideo.mp4")
+if __name__ == '__main__':
+    send("data/DataKeeper/SampleVideo.mp4")
