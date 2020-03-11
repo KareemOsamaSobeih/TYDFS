@@ -20,7 +20,6 @@ def init_connection():
         master_socket.connect("tcp://%s:%s" % (MasterIP, i))
 
 def download(filePath, addresses):
-    context = zmq.Context()
     downSocket = context.socket(zmq.PULL)
     for address in addresses:
         downSocket.connect("tcp://%s:%s"%(address[0], address[1]))
@@ -32,9 +31,9 @@ def download(filePath, addresses):
         downSocket.disconnect("tcp://%s:%s"%(address[0], address[1]))
     downSocket.close()
         
-""" if __name__ == '__main__':
-    download('data/Client/test1.mp4', [('127.0.0.1', '5000')]) """
 
 if __name__ == '__main__':
     read()
     init_connection()
+    
+    #download('data/Client/test2.mp4', [('127.0.0.1', '6005')])

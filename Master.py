@@ -20,8 +20,8 @@ def read():
 def init_connection():
     global context, client_socket, success_socket, dataKeepers_socket
     dataKeepers_socket = {}
-    success_socket = collections.defaultdict(dict)
     context = zmq.Context()
+    success_socket = context.socket(zmq.PULL)
     client_socket = context.socket(zmq.REP)
     client_socket.bind("tcp://%s:%s" % (IP, clientPort))
     for i in dataKeepersIps:
@@ -30,8 +30,7 @@ def init_connection():
             dataKeepers_socket[i].connect("tcp://%s:%s" % (i, j))
     for i in dataKeepersIps:
         for j in successPorts:
-            success_socket[i][j] = context.socket(zmq.PULL)
-            success_socket[i][j].connect("tcp://%s:%s" % (i, j))
+            success_socket.connect("tcp://%s:%s" % (i, j))
 
 
 def makeReplicates(aliveTable, filesTable):
@@ -57,8 +56,20 @@ def makeReplicates(aliveTable, filesTable):
                     raise Exception("Can't find a data keeper to replicate file: `%s`" % file)
                 sendPort = sendRequest(srcNode, file)
                 receiveRequest(dstNode, sendPort)
+                # blocking wait until success message is received 
+                # and file is added in destination node
+                while dstNode not in filesTable[file]:
+                    continue
                 cnt += 1
                 
+# this method should be called in server main process 
+# to update the files table if a data keeper received a file
+def checkSuccess(poller, filesTable):
+    # wait for 10 milliseconds to check if any message is received
+    socks = dict(poller.poll(10))
+    if success_socket in socks and socks[success_socket] == zmq.POLLIN:
+        message = success_socket.recv_json()
+        filesTable[message['file_name']].append(message['data_node_id'])
 
 def sendRequest(srcNode, file):
     pass
@@ -71,9 +82,13 @@ if __name__ == '__main__':
     read()
     init_connection()
     aliveTable = []
-    """ for i in range(10):
+    for i in range(10):
         aliveTable.append({'alive': (bool)(random.randint(0, 1))})
     
     filesTable = {'file1': [0, 3, 5], 'file2': [2, 4]}
     # print(aliveTable)
-    makeReplicates(aliveTable, filesTable) """
+    # makeReplicates(aliveTable, filesTable) 
+    
+    poller = zmq.Poller()
+    poller.register(success_socket, zmq.POLLIN)
+    checkSuccess(poller, filesTable)
