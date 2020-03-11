@@ -3,21 +3,36 @@ import sys
 from configparser import ConfigParser
 import json
 import random
+import collections
 
 def read():
     config = ConfigParser()
     config.read('config.ini')
-    global IP, clientPort, dataKeepersIps, dataKeepersPorts, successPort, id
+    global IP, clientPort, dataKeepersIps, dataKeepersPorts, successPorts, id
     id = int(sys.argv[1])
     IP = config["Master"]["IP"]
     clientPort = json.loads(config["Master"]["client_ports"])[id]
     dataKeepersIps = json.loads(config["Master"]["data_keepers_ips"])
     dataKeepersPorts = json.loads(config["Master"]["Ports"])
-    successPort = config["Master"]["successPort"]
+    successPorts = json.loads(config["Master"]["successPorts"])
 
 
-def connect():
-    pass
+def init_connection():
+    global context, client_socket, success_socket, dataKeepers_socket
+    dataKeepers_socket = {}
+    success_socket = collections.defaultdict(dict)
+    context = zmq.Context()
+    client_socket = context.socket(zmq.REP)
+    client_socket.bind("tcp://%s:%s" % (IP, clientPort))
+    for i in dataKeepersIps:
+        dataKeepers_socket[i] = context.socket(zmq.REQ)
+        for j in dataKeepersPorts:
+            dataKeepers_socket[i].connect("tcp://%s:%s" % (i, j))
+    for i in dataKeepersIps:
+        for j in successPorts:
+            success_socket[i][j] = context.socket(zmq.PULL)
+            success_socket[i][j].connect("tcp://%s:%s" % (i, j))
+
 
 def makeReplicates(aliveTable, filesTable):
     while True:
@@ -54,11 +69,11 @@ def receiveRequest(dstNode, sendPort):
 
 if __name__ == '__main__':
     read()
-    connect()
+    init_connection()
     aliveTable = []
-    for i in range(10):
+    """ for i in range(10):
         aliveTable.append({'alive': (bool)(random.randint(0, 1))})
     
     filesTable = {'file1': [0, 3, 5], 'file2': [2, 4]}
     # print(aliveTable)
-    makeReplicates(aliveTable, filesTable)
+    makeReplicates(aliveTable, filesTable) """
