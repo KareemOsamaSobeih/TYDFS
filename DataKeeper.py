@@ -29,7 +29,7 @@ def init_connection():
 def Init_sharedMemory():
     sharedMem = multiprocessing.Manager()
     global lock_save, storage
-    lock_save = multiprocessing.lock()
+    lock_save = multiprocessing.Lock()
     storage = sharedMem.dict()
 def send(filePath):
     with open(filePath, "rb") as file:
@@ -42,13 +42,16 @@ if __name__ == '__main__':
     Init_sharedMemory()
     while True:
         msg = master_socket.recv_json()
+        print("msg received in DK")
         master_socket.send_string("")
         msg = json.loads(msg)
         if msg['req'] == 0:    #Normal upload
             rec = upload_socket.recv_pyobj()
+            print("ideo rec")
             lock_save.acquire()
-            storage[rec[0]] = rec[1]
+            storage[rec[0]] = list(rec[1],rec[2])
             lock_save.release()
+            print("done")
         #else:       for download or replica stuff
             
             

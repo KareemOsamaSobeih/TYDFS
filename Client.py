@@ -44,11 +44,14 @@ if __name__ == '__main__':
     req = int(sys.argv[2])
     video = sys.argv[3]
     vidObj = open(video, 'rb').read()
-    to_send = [video,vidObj]
+    to_send = [video,vidObj,ID]
     msg = {'req': req, 'file': video }  #req = 0 for upload  & 1 for download
     msg = json.dumps(msg)
+    print("video fetched")
     master_socket.send_json(msg)
+    print ("msg sent")
     freePort = json.loads(master_socket.recv_json())
+    print("msg returned")
     if req == 0:
         socket_upload = context.socket(zmq.PUSH)
         socket_upload.connect("tcp://%s:%s"%(freePort['IP'], freePort['PORT'])) 

@@ -6,10 +6,11 @@ import random
 import collections
 import multiprocessing
 
+
 def read():
     config = ConfigParser()
     config.read('config.ini')
-    global IP, clientPort, dataKeepersIps, dataKeepersPorts, successPorts, id
+    global IP, clientPort, dataKeepersIps, dataKeepersPorts, successPorts, id,UploadPorts
     id = int(sys.argv[1])
     IP = config["Master"]["IP"]
     clientPort = json.loads(config["Master"]["client_ports"])[id]
@@ -65,10 +66,11 @@ def makeReplicates(aliveTable, filesTable):
                 cnt += 1
                 
 def Init_SharedMemory ():
+    global lock_upload, UsedPorts,numNodes,numProcesses_in_nodes,RRNodeItr,RRProcessItr   
     sharedMem = multiprocessing.Manager()
     lock_upload = multiprocessing.Lock()
-    RRNodeItr= sharedMem.value() = 0
-    RRProcessItr = sharedMem.value() = 0   
+    RRNodeItr= sharedMem.Value('i',0) 
+    RRProcessItr = sharedMem.Value('i',0)
     UsedPorts = sharedMem.dict()
     numNodes = len(dataKeepersIps)
     numProcesses_in_nodes = len(dataKeepersPorts)
@@ -79,18 +81,18 @@ def Init_SharedMemory ():
         UsedPorts[i] = listOfProcesses    #1 indicates free port & 0 for busy 
     
 
-def UPload ():
+def UPload (RRNodeItr,RRProcessItr):
     lock_upload.acquire()
     while UsedPorts[RRNodeItr][RRProcessItr] == 0 :
         if RRNodeItr < numNodes-1:
-            RRNodeItr +=1
+            RRNodeItr.value +=1
         else:
             RRNodeItr = 0
             RRProcessItr = RRProcessItr +1 if RRProcessItr < numProcesses_in_nodes-1 else 0
     UsedPorts[RRNodeItr][RRProcessItr] = 0
     lock_upload.release()
     message = {'IP': dataKeepersIps[RRNodeItr] , 'PORT': UploadPorts[RRProcessItr] }
-    return (json.dumps (message), RRNodeItr)        
+    return json.dumps (message), dataKeepersIps[RRNodeItr]        
             
     
     
@@ -119,15 +121,18 @@ if __name__ == '__main__':
     while True:
     #  Wait for next request from client
         message = client_socket.recv_json()
+        print("msg got")
         details = json.loads(message)
         if details['req']  == 0:
-            freePort, node = UPload ()
+            freePort, nodeIP = UPload (RRNodeItr.value,RRProcessItr.value)
             details ['type'] = 0   #0 for client stuff & 1 for replica, if replica add another field for the IP and port of destination machine
             client_socket.send_json(freePort)
-        else:
-            DOWNLOAD()
-        dataKeepers_socket[node].send_json(json.dumps(details))
-        dataKeepers_socket[node].recv_string()
+            print("msg sent to client")
+        #else:
+        #    DOWNLOAD()
+        print("DK prompted")
+        dataKeepers_socket[nodeIP].send_json(json.dumps(details))
+        dataKeepers_socket[nodeIP].recv_string()
     aliveTable = []
     
     """ for i in range(10):
