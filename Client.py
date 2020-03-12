@@ -36,8 +36,6 @@ def download(filePath, addresses):
         downSocket.disconnect("tcp://%s:%s"%(address[0], address[1]))
     downSocket.close()
         
-""" if __name__ == '__main__':
-    download('data/Client/test1.mp4', [('127.0.0.1', '5000')]) """
 
 if __name__ == '__main__':
     read()
@@ -57,3 +55,5 @@ if __name__ == '__main__':
         socket_upload.send_pyobj(to_send)
     #else:            #for download
     socket_upload.disconnect("tcp://%s:%s"%(freePort['IP'], freePort['PORT']))
+    
+    #download('data/Client/test2.mp4', [('127.0.0.1', '6005')])

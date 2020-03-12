@@ -34,10 +34,7 @@ def Init_sharedMemory():
 def send(filePath):
     with open(filePath, "rb") as file:
         download_socket.send(file.read())
-    download_socket.close()
-
-""" if __name__ == '__main__':
-    send("data/DataKeeper/SampleVideo.mp4") """
+    
 
 if __name__ == '__main__':
     read()
@@ -58,3 +55,4 @@ if __name__ == '__main__':
             
         
         
+    #send("data/DataKeeper/SampleVideo.mp4")
