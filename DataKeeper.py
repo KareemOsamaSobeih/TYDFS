@@ -2,7 +2,7 @@ import zmq
 import sys
 from configparser import ConfigParser
 import json
-
+import multiprocessing
 def read():
     config = ConfigParser()
     config.read('config.ini')
@@ -26,7 +26,11 @@ def init_connection():
     upload_socket = context.socket(zmq.PULL)
     upload_socket.bind("tcp://%s:%s" % (IP, uploadPort))
     
-
+def Init_sharedMemory():
+    sharedMem = multiprocessing.Manager()
+    global lock_save, storage
+    lock_save = multiprocessing.lock()
+    storage = sharedMem.dict()
 def send(filePath):
     with open(filePath, "rb") as file:
         download_socket.send(file.read())
@@ -38,3 +42,19 @@ def send(filePath):
 if __name__ == '__main__':
     read()
     init_connection()
+    Init_sharedMemory()
+    while True:
+        msg = master_socket.recv_json()
+        master_socket.send_string("")
+        msg = json.loads(msg)
+        if msg['req'] == 0:    #Normal upload
+            rec = upload_socket.recv_pyobj()
+            lock_save.acquire()
+            storage[rec[0]] = rec[1]
+            lock_save.release()
+        #else:       for download or replica stuff
+            
+            
+            
+        
+        
