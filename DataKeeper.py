@@ -3,59 +3,94 @@ import sys
 from configparser import ConfigParser
 import json
 import multiprocessing
-def read():
-    config = ConfigParser()
-    config.read('config.ini')
-    global IP, masterPort, successPort, downloadPort, uploadPort, pid
-    pid = int(sys.argv[1])
-    IP = config["DataKeeper"]["IP"]
-    masterPort = json.loads(config["DataKeeper"]["Ports"])[pid]
-    successPort = json.loads(config['DataKeeper']['successPorts'])[pid]
-    downloadPort = json.loads(config['DataKeeper']['downloadPorts'])[pid]
-    uploadPort = json.loads(config['DataKeeper']['uploadPorts'])[pid]
+import Conf
+
     
-def init_connection():
-    global context, master_socket, success_socket, download_socket, upload_socket
-    context = zmq.Context()
-    master_socket = context.socket(zmq.REP)
-    master_socket.bind("tcp://%s:%s" % (IP, masterPort))
-    success_socket = context.socket(zmq.PUSH)
-    success_socket.bind("tcp://%s:%s" % (IP, successPort))
-    download_socket = context.socket(zmq.PUSH)
-    download_socket.bind("tcp://%s:%s" % (IP, downloadPort))
-    upload_socket = context.socket(zmq.PULL)
-    upload_socket.bind("tcp://%s:%s" % (IP, uploadPort))
+class DataKeeper:
+
+    def __readConfiguration(self):
+        self.__IP = Conf.DATA_KEEPER_IPs[ID]
+        self.__masterPort = Conf.DATA_KEEPER_MASTER_PORTs[self.__PID]
+        self.__successPort = Conf.DATA_KEEPER_SUCCESS_PORTs[self.__PID]
+        self.__downloadPort = Conf.DATA_KEEPER_DOWNLOAD_PORTs[self.__PID]
+        self.__uploadPort = Conf.DATA_KEEPER_UPLOAD_PORTs[self.__PID]
+
+    def __initConnection(self):
+        self.__context = zmq.Context()
+        self.__masterSocket = self.__context.socket(zmq.REP)
+        self.__masterSocket.bind("tcp://%s:%s" % (self.__IP, self.__masterPort))
+        self.__successSocket = self.__context.socket(zmq.PUSH)
+        self.__successSocket.bind("tcp://%s:%s" % (self.__IP, self.__successPort))
+        self.__downloadSocket = self.__context.socket(zmq.PUSH)
+        self.__downloadSocket.bind("tcp://%s:%s" % (self.__IP, self.__downloadPort))
+        self.__uploadSocket = self.__context.socket(zmq.PULL)
+        self.__uploadSocket.bind("tcp://%s:%s" % (self.__IP, self.__uploadPort))
+
+    def __init__(self, PID, lockSave, storage):
+        self.__PID = PID
+        self.__lockSave = lockSave
+        self.__storage = storage
+        self.__readConfiguration()
+        self.__initConnection()
+        serverProcess = multiprocessing.Process(target=self.__receiveRequestsFromMaster)
+        serverProcess.start()
+        serverProcess.join()
+
+    def __receiveRequestsFromMaster(self):
+        while True:
+            msg = self.__masterSocket.recv_json()
+            # print("msg received in DK")
+            self.__masterSocket.send_string("")
+            
+            if msg['requestType'] == 'upload':
+                self.__receiveUploadRequest()
+            elif msg['requestType'] == 'download':
+                self.__receiveDownloadRequest()
+            elif msg['requestType'] == 'replica':
+                pass
     
-def Init_sharedMemory():
-    sharedMem = multiprocessing.Manager()
-    global lock_save, storage
-    lock_save = multiprocessing.Lock()
-    storage = sharedMem.dict()
-def send(filePath):
-    with open(filePath, "rb") as file:
-        download_socket.send(file.read())
+    def __receiveUploadRequest(self):
+        rec = self.__uploadSocket.recv_pyobj()
+        #print("video rec")
+        self.__lockSave.acquire()
+        self.__storage[rec['fileName']] = {'file': rec['file'], 'clientID': rec['clientID']}
+        self.__lockSave.release()
+        #print("done")
+
+    def __receiveDownloadRequest(self):
+        pass
+
+    def __sendToClient(self, filePath):
+        with open(filePath, "rb") as file:
+            self.__downloadSocket.send(file.read())
+    
+    def heartBeatsConfiguration(self):
+        context = zmq.Context()
+        socket = context.socket(zmq.PUB)
+        socket.bind("tcp://%s:%s"%(self.__IP, Conf.ALIVE_PORT))
+
+    def heartBeats(self):
+        while True:
+            socket.send_string("%d" % (ID))
+            time.sleep(1)
     
 
 if __name__ == '__main__':
-    read()
-    init_connection()
-    Init_sharedMemory()
-    while True:
-        msg = master_socket.recv_json()
-        print("msg received in DK")
-        master_socket.send_string("")
-        msg = json.loads(msg)
-        if msg['req'] == 0:    #Normal upload
-            rec = upload_socket.recv_pyobj()
-            print("ideo rec")
-            lock_save.acquire()
-            storage[rec[0]] = list(rec[1],rec[2])
-            lock_save.release()
-            print("done")
-        #else:       for download or replica stuff
-            
-            
-            
-        
-        
+    
+    manager = multiprocessing.Manager()
+    lockSave = multiprocessing.Lock()
+    storage = manager.dict()
+    
+    ID = sys.argv[1]
+    numOfProcesses = len(Conf.DATA_KEEPER_MASTER_PORTs)
+    processes = []
+    for i in range(numOfProcesses):
+        processes.append(DataKeeper(ID, i, lockSave, storage))
+
+    # start a differnt process to send heartbeats to the Master
+    processes[0].heartBeatsConfiguration()
+    heartBeatsProcess = multiprocessing.Process(target=processes[0].heartBeats())
+    heartBeatsProcess.start()
+    heartBeatsProcess.join()
+
     #send("data/DataKeeper/SampleVideo.mp4")
