@@ -1,7 +1,5 @@
 import zmq
 import sys
-from configparser import ConfigParser
-import json
 import Conf
 
 #Client takes arguments as follow:-
@@ -14,12 +12,12 @@ class Client:
     def __initConnection(self):
         self.__context = zmq.Context()
         self.__masterSocket = self.__context.socket(zmq.REQ)
-        for port in Conf.MASTER_PORTS:
+        for port in Conf.MASTER_CLIENT_PORTs:
             self.__masterSocket.connect("tcp://%s:%s" % (Conf.MASTER_IP, port))
 
     def __init__(self, ID):
         self.__ID = ID
-        self.initConnection()
+        self.__initConnection()
 
     def __downloadFromNode(self, filePath, addresses):
         downSocket = self.__context.socket(zmq.PULL)
@@ -65,7 +63,7 @@ if __name__ == '__main__':
         elif command == 'upload':
             fileName = input("Enter filename: ")
             filePath = input("Enter filePath: ")
-            cl1.snedUploadRequest(fileName, filePath)
+            cl1.sendUploadRequest(fileName, filePath)
         elif command == 'download':
             fileName = input("Enter filename: ")
             cl1.sendDownloadRequest(fileName)

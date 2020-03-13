@@ -1,7 +1,5 @@
 import zmq
 import sys
-from configparser import ConfigParser
-import json
 import multiprocessing
 import Conf
 
@@ -9,7 +7,7 @@ import Conf
 class DataKeeper:
 
     def __readConfiguration(self):
-        self.__IP = Conf.DATA_KEEPER_IPs[ID]
+        self.__IP = Conf.DATA_KEEPER_IPs[self.__ID]
         self.__masterPort = Conf.DATA_KEEPER_MASTER_PORTs[self.__PID]
         self.__successPort = Conf.DATA_KEEPER_SUCCESS_PORTs[self.__PID]
         self.__downloadPort = Conf.DATA_KEEPER_DOWNLOAD_PORTs[self.__PID]
@@ -26,17 +24,18 @@ class DataKeeper:
         self.__uploadSocket = self.__context.socket(zmq.PULL)
         self.__uploadSocket.bind("tcp://%s:%s" % (self.__IP, self.__uploadPort))
 
-    def __init__(self, PID, lockSave, storage):
+    def __init__(self, ID, PID, lockSave, storage):
+        self.__ID = ID
         self.__PID = PID
         self.__lockSave = lockSave
         self.__storage = storage
         self.__readConfiguration()
         self.__initConnection()
-        serverProcess = multiprocessing.Process(target=self.__receiveRequestsFromMaster)
+        serverProcess = multiprocessing.Process(target=self.receiveRequestsFromMaster)
         serverProcess.start()
         serverProcess.join()
 
-    def __receiveRequestsFromMaster(self):
+    def receiveRequestsFromMaster(self):
         while True:
             msg = self.__masterSocket.recv_json()
             # print("msg received in DK")
@@ -65,13 +64,12 @@ class DataKeeper:
             self.__downloadSocket.send(file.read())
     
     def heartBeatsConfiguration(self):
-        context = zmq.Context()
-        socket = context.socket(zmq.PUB)
-        socket.bind("tcp://%s:%s"%(self.__IP, Conf.ALIVE_PORT))
+        self.__aliveSocket = self.__context.socket(zmq.PUB)
+        self.__aliveSocket.bind("tcp://%s:%s"%(self.__IP, Conf.ALIVE_PORT))
 
     def heartBeats(self):
         while True:
-            socket.send_string("%d" % (ID))
+            self.__aliveSocket.send_string("%d" % (self.__ID))
             time.sleep(1)
     
 
@@ -81,15 +79,15 @@ if __name__ == '__main__':
     lockSave = multiprocessing.Lock()
     storage = manager.dict()
     
-    ID = sys.argv[1]
+    ID = int(sys.argv[1])
     numOfProcesses = len(Conf.DATA_KEEPER_MASTER_PORTs)
     processes = []
     for i in range(numOfProcesses):
         processes.append(DataKeeper(ID, i, lockSave, storage))
 
-    # start a differnt process to send heartbeats to the Master
+    # start one differnt process to send heartbeats to the Master
     processes[0].heartBeatsConfiguration()
-    heartBeatsProcess = multiprocessing.Process(target=processes[0].heartBeats())
+    heartBeatsProcess = multiprocessing.Process(target=processes[0].heartBeats)
     heartBeatsProcess.start()
     heartBeatsProcess.join()
 
