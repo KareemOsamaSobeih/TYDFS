@@ -42,7 +42,7 @@ class DataKeeper:
         while True:
             # check if any message is received from client or Data keeper
             socks = dict(self.__poller.poll())
-            if self.__masterSocket in socks and socks[self.__successSocket] == zmq.POLLIN:
+            if self.__masterSocket in socks and socks[self.__masterSocket] == zmq.POLLIN:
                 # Request message from master
                 self.receiveRequestsFromMaster()
             elif self.__clientSocket in socks and socks[self.__clientSocket] == zmq.POLLIN:

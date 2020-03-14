@@ -88,8 +88,8 @@ class Master:
     def __checkSuccess(self):
         message = self.__successSocket.recv_json()
         if message['file_name'] not in self.__filesTable:
-            self.__filesTable[message['file_name']] = [message['clientID']]     
-        self.__filesTable[message['file_name']].append(message['node_ID'])
+            self.__filesTable[message['file_name']] = {'ClientID': message['clientID'], 'nodes': []}     
+        self.__filesTable[message['file_name']]['nodes'].append(message['node_ID'])
         self.__usedPorts [message['nodeID']][message['processID']] = False
         
 
@@ -99,7 +99,7 @@ class Master:
         self.__lockUpload.acquire()
         currentNode = self.__RRNodeItr.value
         currentProcess = self.__RRProcessItr.value
-        while self.__usedPorts[self.__RRNodeItr.value][self.__RRProcessItr.value] == True :
+        while self.__usedPorts[self.__RRNodeItr.value][self.__RRProcessItr.value] == True or self.__aliveTable[self.__RRNodeItr.value]['isAlive'] == False:
             self.__RRNodeItr.value +=1
             self.__RRNodeItr.value %=numNodes
             if self.__RRNodeItr.value == 0:
@@ -107,6 +107,10 @@ class Master:
                 self.__RRProcessItr.value %= numProcessesInNodes
             if self.__RRNodeItr.value == currentNode and self.__RRProcessItr == currentProcess:
                 break
+        while self.__aliveTable[self.__RRNodeItr.value]['isAlive'] == False:
+            self.__RRNodeItr.value +=1
+            self.__RRNodeItr.value %=numNodes
+            
         self.__usedPorts[self.__RRNodeItr.value][self.__RRProcessItr.value] = True
         self.__lockUpload.release()
         freePort = {'IP': Conf.DATA_KEEPER_IPs[self.__RRNodeItr.value] ,
