@@ -2,7 +2,7 @@ import zmq
 import sys
 import multiprocessing
 import Conf
-
+import time
     
 class DataKeeper:
 
@@ -23,6 +23,9 @@ class DataKeeper:
         self.__downloadSocket.bind("tcp://%s:%s" % (self.__IP, self.__downloadPort))
         self.__uploadSocket = self.__context.socket(zmq.PULL)
         self.__uploadSocket.bind("tcp://%s:%s" % (self.__IP, self.__uploadPort))
+        self.__poller = zmq.Poller()
+        self.__poller.register(self.__masterSocket, zmq.POLLIN)
+        self.__poller.register(self.__clientSocket, zmq.POLLIN)
 
     def __init__(self, ID, PID, lockSave, storage):
         self.__ID = ID
@@ -31,19 +34,29 @@ class DataKeeper:
         self.__storage = storage
         self.__readConfiguration()
         self.__initConnection()
-        serverProcess = multiprocessing.Process(target=self.receiveRequestsFromMaster)
+        serverProcess = multiprocessing.Process(target=self.dataKeeperProcess)
         serverProcess.start()
         serverProcess.join()
-
-    def receiveRequestsFromMaster(self):
+    
+    def dataKeeperProcess (self):
+        while True:
+            # check if any message is received from client or Data keeper
+            socks = dict(self.__poller.poll())
+            if self.__masterSocket in socks and socks[self.__successSocket] == zmq.POLLIN:
+                # Request message from master
+                self.receiveRequestsFromMaster()
+            elif self.__clientSocket in socks and socks[self.__clientSocket] == zmq.POLLIN:
+                # Upload request, whether from client or a node
+                self.__receiveUploadRequest()
+                
+    def __receiveRequestsFromMaster(self):
+        #Need to be modified to receive message prompting it to send to client or to a given-address node
         while True:
             msg = self.__masterSocket.recv_json()
             # print("msg received in DK")
             self.__masterSocket.send_string("")
             
-            if msg['requestType'] == 'upload':
-                self.__receiveUploadRequest()
-            elif msg['requestType'] == 'download':
+            if msg['requestType'] == 'download':
                 self.__receiveDownloadRequest()
             elif msg['requestType'] == 'replica':
                 pass
@@ -51,9 +64,13 @@ class DataKeeper:
     def __receiveUploadRequest(self):
         rec = self.__uploadSocket.recv_pyobj()
         #print("video rec")
+        with open(rec['fileName'], "wb") as out_file:  # open for [w]riting as [b]inary
+                out_file.write(rec['file'].data)
         self.__lockSave.acquire()
-        self.__storage[rec['fileName']] = {'file': rec['file'], 'clientID': rec['clientID']}
+        #self.__storage[rec['fileName']] = {'file': rec['file'], 'clientID': rec['clientID']}
         self.__lockSave.release()
+        successMessage = {'fileName': rec['fileName'], 'clientID': rec['clientID'], 'nodeID': self.__ID, 'processID': self.__PID }
+        self.__successSocket.send_json(successMessage)
         #print("done")
 
     def __receiveDownloadRequest(self):

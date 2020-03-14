@@ -87,43 +87,46 @@ class Master:
     # to update the files table if a data keeper received a file
     def __checkSuccess(self):
         message = self.__successSocket.recv_json()
-        self.__filesTable[message['file_name']].append(message['data_node_id'])
+        if message['file_name'] not in self.__filesTable:
+            self.__filesTable[message['file_name']] = [message['clientID']]     
+        self.__filesTable[message['file_name']].append(message['node_ID'])
+        self.__usedPorts [message['nodeID']][message['processID']] = False
         
 
     def __chooseUploadNode (self):
         numNodes = len(Conf.DATA_KEEPER_IPs)
         numProcessesInNodes = len(Conf.DATA_KEEPER_MASTER_PORTs)
         self.__lockUpload.acquire()
-        while self.__usedPorts[self.__RRNodeItr.value][self.__RRProcessItr.value] == 0 :
-            if self.__RRNodeItr.value < numNodes-1:
-                self.__RRNodeItr.value +=1
-            else:
-                self.__RRNodeItr.value = 0
-                self.__RRProcessItr.value = self.__RRProcessItr.value +1 if self.__RRProcessItr.value < numProcessesInNodes-1 else 0
-        self.__usedPorts[self.__RRNodeItr.value][self.__RRProcessItr.value] = 0
+        currentNode = self.__RRNodeItr.value
+        currentProcess = self.__RRProcessItr.value
+        while self.__usedPorts[self.__RRNodeItr.value][self.__RRProcessItr.value] == True :
+            self.__RRNodeItr.value +=1
+            self.__RRNodeItr.value %=numNodes
+            if self.__RRNodeItr.value == 0:
+                self.__RRProcessItr.value += 1
+                self.__RRProcessItr.value %= numProcessesInNodes
+            if self.__RRNodeItr.value == currentNode and self.__RRProcessItr == currentProcess:
+                break
+        self.__usedPorts[self.__RRNodeItr.value][self.__RRProcessItr.value] = True
         self.__lockUpload.release()
         freePort = {'IP': Conf.DATA_KEEPER_IPs[self.__RRNodeItr.value] ,
          'PORT': Conf.DATA_KEEPER_UPLOAD_PORTs[self.__RRProcessItr.value] }
         return freePort
             
     def __receiveUploadRequest(self):
-        freePort = self.__chooseUploadNode()
-        message ['type'] = 0   #0 for client stuff & 1 for replica, if replica add another field for the IP and port of destination machine
+        freePort = self.__chooseUploadNode() 
         self.__clientSocket.send_json(freePort)
         # print("msg sent to client")
-        return freePort['IP']
 
     def __receiveRequestFromClient(self):
         message = self.__clientSocket.recv_json()
         # print("msg got")
         if message['requestType'] == 'upload':
-            nodeIP = self.__receiveUploadRequest()
-            
+            self.__receiveUploadRequest()
+              
         # else:
         #     DOWNLOAD()
         # print("DK prompted")
-        self.__dataKeepersSocket[nodeIP].send_json(message)
-        self.__dataKeepersSocket[nodeIP].recv_string()
 
     def serverProcess(self):
         while True:
@@ -176,7 +179,7 @@ if __name__ == '__main__':
         entry = manager.dict({"lastTimeAlive":datetime.datetime.now(),"isAlive": False})
         aliveTable.append(entry)
         for j in range (numProcessesInNodes):
-            listOfProcesses.append(1)
+            listOfProcesses.append(False)
         usedPorts[i] = listOfProcesses    #1 indicates free port & 0 for busy 
     filesTable = manager.dict()
 
