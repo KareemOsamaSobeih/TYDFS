@@ -83,6 +83,9 @@ class Master:
     # to update the files table if a data keeper received a file
     def __checkSuccess(self):
         message = self.__successSocket.recv_json()
+        if message['clientID'] == -1:
+            self.__usedPorts [message['nodeID']][message['processID']] = False
+            return
         if message['file_name'] not in self.__filesTable:
             self.__filesTable[message['file_name']] = {'ClientID': message['clientID'], 'nodes': []}     
         self.__filesTable[message['file_name']]['nodes'].append(message['node_ID'])
@@ -123,16 +126,21 @@ class Master:
         freePorts = []
         size = 0
         for i in self.__filesTable[fileName]['nodes']:
-            for j in Conf.DATA_KEEPER_MASTER_PORTs:
+            if self.__aliveTable[i] == False:
+                continue
+            Node_IP = Conf.DATA_KEEPER_IPs[i]
+            for j in range(len(Conf.DATA_KEEPER_MASTER_PORTs)):
                 if(self.__usedPorts[i][j] == False):
                     self.__usedPorts[i][j] = True
+                    Node_Port = Conf.DATA_KEEPER_MASTER_PORTs[j]
                     if len(freePorts) == 0:
                         msg = {'requestType': 'download', 'mode' : 1, 'fileName': fileName}
-                        self.__dataKeeperSocket.connect("tcp://%s:%s" % (i, j))
+                        self.__dataKeeperSocket.connect("tcp://%s:%s" % (Node_IP, Node_Port))
                         self.__dataKeeperSocket.send_json(msg)
                         msg = self.__dataKeeperSocket.recv_pyobj()
                         size = msg['size']
-                    freePorts.append({'Node': i, 'Port': j})
+                    freePorts.append({'Node': Node_IP, 'Port': Node_Port})
+        self.__lockUpload.release()
         MOD = len(freePorts)
         j = 0
         downloadPorts = []
@@ -141,9 +149,9 @@ class Master:
             self.__dataKeeperSocket.send_json({'fileName': fileName, 'mode': 2, 'm': j, 'MOD': MOD})
             j += 1
             downloadPort = self.__dataKeeperSocket.recv_pyobj()
+            self.__dataKeeperSocket.disconnect("tcp://%s:%s"% (i['Node'], i['Port']))
             downloadPorts.append(downloadPort)
         self.__clientSocket.send_json({'freeports': downloadPorts, 'numberofchunks': size})
-        self.__lockUpload.release()
 
     
     def __receiveRequestFromClient(self):
