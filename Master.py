@@ -6,18 +6,18 @@ import Conf
 import time
 import datetime
 
-class Master:
+class Master(multiprocessing.Process):
 
     def __readConfiguration(self):
         self.__IP = Conf.MASTER_IP
         self.__clientPort = Conf.MASTER_CLIENT_PORTs[self.__PID]
 
     def __initConnection(self):
-        self.__context = zmq.Context()
-        self.__successSocket = self.__context.socket(zmq.PULL)
-        self.__clientSocket = self.__context.socket(zmq.REP)
+        context = zmq.Context()
+        self.__successSocket = context.socket(zmq.PULL)
+        self.__clientSocket = context.socket(zmq.REP)
         self.__clientSocket.bind("tcp://%s:%s" % (self.__IP, self.__clientPort))
-        self.__dataKeeperSocket = self.__context.socket(zmq.PAIR)
+        self.__dataKeeperSocket = context.socket(zmq.PAIR)
         for dKIP in Conf.DATA_KEEPER_IPs:
             for dKPort in Conf.DATA_KEEPER_SUCCESS_PORTs:
                 self.__successSocket.connect("tcp://%s:%s" % (dKIP, dKPort))
@@ -27,30 +27,18 @@ class Master:
         self.__poller.register(self.__clientSocket, zmq.POLLIN)
 
 
-    def __initResources(self, filesTable, aliveTable, lockUpload, usedPorts, RRNodeItr, RRProcessItr):
-        self.__filesTable = filesTable
-        self.__aliveTable = aliveTable
-        self.__lockUpload = lockUpload
-        self.__usedPorts = usedPorts
-        self.__RRNodeItr = RRNodeItr
-        self.__RRProcessItr = RRProcessItr
-
-    def __init__(self, PID, filesTable, aliveTable, lockUpload, usedPorts, RRNodeItr, RRProcessItr):
+    def __init__(self, PID):
+        multiprocessing.Process.__init__(self)
         self.__PID = PID
         self.__readConfiguration()
-        self.__initConnection()
-        self.__initResources(filesTable, aliveTable, lockUpload, usedPorts, RRNodeItr, RRProcessItr)
-        serverProcess = multiprocessing.Process(target=self.serverProcess)
-        serverProcess.start()
-        serverProcess.join()
         
     def makeReplicates(self):
         while True:
-            for file in self.__filesTable:
+            for file in filesTable:
                 cnt = 0
                 srcNode = -1
-                for node in self.__filesTable[file]:
-                    if self.__aliveTable[node]['isAlive']:
+                for node in filesTable[file]:
+                    if aliveTable[node]['isAlive']:
                         cnt += 1
                         if srcNode == -1:
                             srcNode = node
@@ -59,8 +47,8 @@ class Master:
                 while cnt < 3:
                     # print(file, cnt)
                     dstNode = -1
-                    for node in range(len(self.__aliveTable)):
-                        if self.__aliveTable[node]['isAlive'] and (node not in self.__filesTable[file]):
+                    for node in range(len(aliveTable)):
+                        if aliveTable[node]['isAlive'] and (node not in filesTable[file]):
                             dstNode = node
                             break
                     if dstNode == -1:
@@ -69,7 +57,7 @@ class Master:
                     self.receiveRequest(dstNode, sendPort)
                     # blocking wait until success message is received 
                     # and file is added in destination node
-                    while dstNode not in self.__filesTable[file]:
+                    while dstNode not in filesTable[file]:
                         continue
                     cnt += 1
     
@@ -83,49 +71,49 @@ class Master:
     # to update the files table if a data keeper received a file
     def __checkSuccess(self):
         message = self.__successSocket.recv_json()
-        if message['file_name'] not in self.__filesTable:
-            self.__filesTable[message['file_name']] = {'ClientID': message['clientID'], 'nodes': []}     
-        self.__filesTable[message['file_name']]['nodes'].append(message['node_ID'])
-        self.__usedPorts [message['nodeID']][message['processID']] = False
+        if message['file_name'] not in filesTable:
+            filesTable[message['file_name']] = {'ClientID': message['clientID'], 'nodes': []}     
+        filesTable[message['file_name']]['nodes'].append(message['node_ID'])
+        usedPorts [message['nodeID']][message['processID']] = False
         
 
     def __chooseUploadNode (self):
         numNodes = len(Conf.DATA_KEEPER_IPs)
         numProcessesInNodes = len(Conf.DATA_KEEPER_MASTER_PORTs)
-        self.__lockUpload.acquire()
-        currentNode = self.__RRNodeItr.value
-        currentProcess = self.__RRProcessItr.value
-        while self.__usedPorts[self.__RRNodeItr.value][self.__RRProcessItr.value] == True or self.__aliveTable[self.__RRNodeItr.value]['isAlive'] == False:
-            self.__RRNodeItr.value +=1
-            self.__RRNodeItr.value %=numNodes
-            if self.__RRNodeItr.value == 0:
-                self.__RRProcessItr.value += 1
-                self.__RRProcessItr.value %= numProcessesInNodes
-            if self.__RRNodeItr.value == currentNode and self.__RRProcessItr == currentProcess:
+        lockUpload.acquire()
+        currentNode = RRNodeItr.value
+        currentProcess = RRProcessItr.value
+        while usedPorts[RRNodeItr.value][RRProcessItr.value] == True or aliveTable[RRNodeItr.value]['isAlive'] == False:
+            RRNodeItr.value +=1
+            RRNodeItr.value %=numNodes
+            if RRNodeItr.value == 0:
+                RRProcessItr.value += 1
+                RRProcessItr.value %= numProcessesInNodes
+            if RRNodeItr.value == currentNode and RRProcessItr == currentProcess:
                 break
-        while self.__aliveTable[self.__RRNodeItr.value]['isAlive'] == False:
-            self.__RRNodeItr.value +=1
-            self.__RRNodeItr.value %=numNodes
+        while aliveTable[RRNodeItr.value]['isAlive'] == False:
+            RRNodeItr.value +=1
+            RRNodeItr.value %=numNodes
             
-        self.__usedPorts[self.__RRNodeItr.value][self.__RRProcessItr.value] = True
-        self.__lockUpload.release()
-        freePort = {'IP': Conf.DATA_KEEPER_IPs[self.__RRNodeItr.value] ,
-         'PORT': Conf.DATA_KEEPER_UPLOAD_PORTs[self.__RRProcessItr.value] }
+        usedPorts[RRNodeItr.value][RRProcessItr.value] = True
+        lockUpload.release()
+        freePort = {'IP': Conf.DATA_KEEPER_IPs[RRNodeItr.value] ,
+         'PORT': Conf.DATA_KEEPER_UPLOAD_PORTs[RRProcessItr.value] }
         return freePort
             
     def __receiveUploadRequest(self):
         freePort = self.__chooseUploadNode() 
         self.__clientSocket.send_json(freePort)
-        # print("msg sent to client")
+        print("msg sent to client")
 
     def __receiveDownloadRequest(self, fileName):
-        self.__lockUpload.acquire()
+        lockUpload.acquire()
         freePorts = []
         size = 0
-        for i in self.__filesTable[fileName]['nodes']:
+        for i in filesTable[fileName]['nodes']:
             for j in Conf.DATA_KEEPER_MASTER_PORTs:
-                if(self.__usedPorts[i][j] == False):
-                    self.__usedPorts[i][j] = True
+                if(usedPorts[i][j] == False):
+                    usedPorts[i][j] = True
                     if len(freePorts) == 0:
                         msg = {'requestType': 'download', 'mode' : 1, 'fileName': fileName}
                         self.__dataKeeperSocket.connect("tcp://%s:%s" % (i, j))
@@ -143,22 +131,20 @@ class Master:
             downloadPort = self.__dataKeeperSocket.recv_pyobj()
             downloadPorts.append(downloadPort)
         self.__clientSocket.send_json({'freeports': downloadPorts, 'numberofchunks': size})
-        self.__lockUpload.release()
+        lockUpload.release()
 
     
     def __receiveRequestFromClient(self):
         message = self.__clientSocket.recv_json()
-        # print("msg got")
+        print("msg got")
         if message['requestType'] == 'upload':
             self.__receiveUploadRequest()
         if message['requestType'] == 'download':
             self.__receiveDownloadRequest(message['file'])
               
-        # else:
-        #     DOWNLOAD()
-        # print("DK prompted")
 
-    def serverProcess(self):
+    def run(self):
+        self.__initConnection()
         while True:
             # check if any message is received from client or Data keeper
             socks = dict(self.__poller.poll())
@@ -170,7 +156,8 @@ class Master:
                 self.__receiveRequestFromClient()
     
     def haertBeatsConfiguration(self):
-        self.__aliveSocket = self.__context.socket(zmq.SUB)
+        context = zmq.Context()
+        self.__aliveSocket = context.socket(zmq.SUB)
         self.__aliveSocket.setsockopt_string(zmq.SUBSCRIBE, "")
         # connect to each data_node
         for dKIP in Conf.DATA_KEEPER_IPs:
@@ -184,15 +171,15 @@ class Master:
             socks = dict(self.__alivePoller.poll(1000))
             if socks:
                 topic =  int ( self.__aliveSocket.recv_string(zmq.NOBLOCK) )
-                self.__aliveTable[topic]["lastTimeAlive"] = datetime.datetime.now()
-                self.__aliveTable[topic]["isAlive"] = True
+                aliveTable[topic]["lastTimeAlive"] = datetime.datetime.now()
+                aliveTable[topic]["isAlive"] = True
 
             for i  in range(len(Conf.DATA_KEEPER_IPs)):
                 # Timeout
                 # consider dead
-                if( (datetime.datetime.now() - self.__aliveTable[i]["lastTimeAlive"]).seconds > 1):
-                    self.__aliveTable[i]["isAlive"] = False
-                # print(i,self.__aliveTable[i]["isAlive"])
+                if( (datetime.datetime.now() - aliveTable[i]["lastTimeAlive"]).seconds > 1):
+                    aliveTable[i]["isAlive"] = False
+                print(i,aliveTable[i]["isAlive"])
 
 if __name__ == '__main__':
     # initialize shared memory
@@ -215,16 +202,19 @@ if __name__ == '__main__':
 
     servers = []
     for i in range(len(Conf.MASTER_CLIENT_PORTs)):
-        servers.append(Master(i, filesTable, aliveTable, lockUpload, usedPorts, RRNodeItr, RRProcessItr))
+        servers.append(Master(i))
+        servers[i].start()
     
     # start one different process to handle alive messages from data keepers
     servers[0].haertBeatsConfiguration()
     aliveProcess = multiprocessing.Process(target=servers[0].heartBeats)
     aliveProcess.start()
-    aliveProcess.join()
 
     # start one different process to handle generating replicates
-    replicaProcess = multiprocessing.Process(target=servers[0].makeReplicates)
-    replicaProcess.start()
-    replicaProcess.join()
-    # filesTable = {'file1': [0, 3, 5], 'file2': [2, 4]}
+    # replicaProcess = multiprocessing.Process(target=servers[0].makeReplicates)
+    # replicaProcess.start()
+
+    for i in range(len(Conf.MASTER_CLIENT_PORTs)):
+        servers[i].join()
+    # replicaProcess.join()
+    aliveProcess.join()

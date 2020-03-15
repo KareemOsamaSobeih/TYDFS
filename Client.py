@@ -45,11 +45,11 @@ class Client:
         with open(filePath, "rb") as file:
             toSend = {'fileName':fileName, 'file':file, 'clientID': self.__ID}
             msg = {'requestType': 'upload', 'file': fileName } 
-            #print("video fetched")
+            print("video fetched")
             self.__masterSocket.send_json(msg)
-            #print ("msg sent")
+            print ("msg sent")
             freePort = self.__masterSocket.recv_json()
-            #print("msg returned")
+            print("msg returned")
 
             socket_upload = self.__context.socket(zmq.PUSH)
             socket_upload.connect("tcp://%s:%s"%(freePort['IP'], freePort['PORT'])) 
@@ -87,4 +87,3 @@ if __name__ == '__main__':
         else:
             print("%s: command not found" % (command))
 
-    #download('data/Client/test2.mp4', [('127.0.0.1', '6005')])

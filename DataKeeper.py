@@ -5,7 +5,7 @@ import Conf
 import time
 import os
     
-class DataKeeper:
+class DataKeeper(multiprocessing.Process):
 
     def __readConfiguration(self):
         self.__IP = Conf.DATA_KEEPER_IPs[self.__ID]
@@ -15,31 +15,27 @@ class DataKeeper:
         self.__uploadPort = Conf.DATA_KEEPER_UPLOAD_PORTs[self.__PID]
 
     def __initConnection(self):
-        self.__context = zmq.Context()
-        self.__masterSocket = self.__context.socket(zmq.REP)
+        context = zmq.Context()
+        self.__masterSocket = context.socket(zmq.REP)
         self.__masterSocket.bind("tcp://%s:%s" % (self.__IP, self.__masterPort))
-        self.__successSocket = self.__context.socket(zmq.PUSH)
+        self.__successSocket = context.socket(zmq.PUSH)
         self.__successSocket.bind("tcp://%s:%s" % (self.__IP, self.__successPort))
-        self.__downloadSocket = self.__context.socket(zmq.PUSH)
+        self.__downloadSocket = context.socket(zmq.PUSH)
         self.__downloadSocket.bind("tcp://%s:%s" % (self.__IP, self.__downloadPort))
-        self.__uploadSocket = self.__context.socket(zmq.PULL)
+        self.__uploadSocket = context.socket(zmq.PULL)
         self.__uploadSocket.bind("tcp://%s:%s" % (self.__IP, self.__uploadPort))
         self.__poller = zmq.Poller()
         self.__poller.register(self.__masterSocket, zmq.POLLIN)
         self.__poller.register(self.__uploadSocket, zmq.POLLIN)
 
-    def __init__(self, ID, PID, lockSave, storage):
+    def __init__(self, ID, PID):
+        multiprocessing.Process.__init__(self)
         self.__ID = ID
         self.__PID = PID
-        self.__lockSave = lockSave
-        self.__storage = storage
         self.__readConfiguration()
-        self.__initConnection()
-        serverProcess = multiprocessing.Process(target=self.dataKeeperProcess)
-        serverProcess.start()
-        serverProcess.join()
     
-    def dataKeeperProcess (self):
+    def run (self):
+        self.__initConnection()
         while True:
             # check if any message is received from client or Data keeper
             socks = dict(self.__poller.poll())
@@ -54,7 +50,7 @@ class DataKeeper:
         #Need to be modified to receive message prompting it to send to client or to a given-address node
         while True:
             msg = self.__masterSocket.recv_json()
-            # print("msg received in DK")
+            print("msg received in DK")
             self.__masterSocket.send_string("")
             
             if msg['requestType'] == 'download':
@@ -64,15 +60,15 @@ class DataKeeper:
     
     def __receiveUploadRequest(self):
         rec = self.__uploadSocket.recv_pyobj()
-        #print("video rec")
+        print("video rec")
         with open(rec['fileName'], "wb") as out_file:  # open for [w]riting as [b]inary
                 out_file.write(rec['file'].data)
-        self.__lockSave.acquire()
-        #self.__storage[rec['fileName']] = {'file': rec['file'], 'clientID': rec['clientID']}
-        self.__lockSave.release()
+        # lockSave.acquire()
+        # self.__storage[rec['fileName']] = {'file': rec['file'], 'clientID': rec['clientID']}
+        # lockSave.release()
         successMessage = {'fileName': rec['fileName'], 'clientID': rec['clientID'], 'nodeID': self.__ID, 'processID': self.__PID }
         self.__successSocket.send_json(successMessage)
-        #print("done")
+        print("done")
 
     def __receiveDownloadRequest(self, msg):
         chunksize = Conf.CHUNK_SIZE
@@ -108,7 +104,8 @@ class DataKeeper:
             self.__downloadSocket.send(file.read())
     
     def heartBeatsConfiguration(self):
-        self.__aliveSocket = self.__context.socket(zmq.PUB)
+        context = zmq.Context()
+        self.__aliveSocket = context.socket(zmq.PUB)
         self.__aliveSocket.bind("tcp://%s:%s"%(self.__IP, Conf.ALIVE_PORT))
 
     def heartBeats(self):
@@ -120,19 +117,22 @@ class DataKeeper:
 if __name__ == '__main__':
     
     manager = multiprocessing.Manager()
-    lockSave = multiprocessing.Lock()
-    storage = manager.dict()
+    # lockSave = multiprocessing.Lock()
+    # storage = manager.dict()
     
     ID = int(sys.argv[1])
     numOfProcesses = len(Conf.DATA_KEEPER_MASTER_PORTs)
     processes = []
     for i in range(numOfProcesses):
-        processes.append(DataKeeper(ID, i, lockSave, storage))
+        processes.append(DataKeeper(ID, i))
+        processes[i].start()
 
     # start one differnt process to send heartbeats to the Master
     processes[0].heartBeatsConfiguration()
     heartBeatsProcess = multiprocessing.Process(target=processes[0].heartBeats)
     heartBeatsProcess.start()
+
+    for i in range(numOfProcesses):
+        processes[i].join()
     heartBeatsProcess.join()
 
-    #send("data/DataKeeper/SampleVideo.mp4")
