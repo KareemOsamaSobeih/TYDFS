@@ -29,14 +29,15 @@ class Client:
         while numberOfChunks > 0:
             msg = downSocket.recv_pyobj()
             data.append(msg)
-        data = sorted(data, key=lambda i: i['chunckNumber'])
+            numberOfChunks -= 1
+        data.sort(key=lambda i: i['chunckNumber'])
         
         with open(filePath, "wb") as file:
             for i in data:
                 file.write(i['data'])
 
         for address in addresses:
-            downSocket.disconnect("tcp://%s:%s"%(address[0], address[1]))
+            downSocket.disconnect("tcp://%s:%s"%(address['IP'], address['PORT']))
         downSocket.close()
         return 'successful download'
         

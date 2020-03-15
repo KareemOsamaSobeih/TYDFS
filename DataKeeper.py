@@ -26,7 +26,7 @@ class DataKeeper:
         self.__uploadSocket.bind("tcp://%s:%s" % (self.__IP, self.__uploadPort))
         self.__poller = zmq.Poller()
         self.__poller.register(self.__masterSocket, zmq.POLLIN)
-        self.__poller.register(self.__clientSocket, zmq.POLLIN)
+        self.__poller.register(self.__uploadSocket, zmq.POLLIN)
 
     def __init__(self, ID, PID, lockSave, storage):
         self.__ID = ID

@@ -50,7 +50,7 @@ class Master:
                 cnt = 0
                 srcNode = -1
                 for node in self.__filesTable[file]:
-                    if self.__aliveTable[node]['is_alive']:
+                    if self.__aliveTable[node]['isAlive']:
                         cnt += 1
                         if srcNode == -1:
                             srcNode = node
@@ -60,7 +60,7 @@ class Master:
                     # print(file, cnt)
                     dstNode = -1
                     for node in range(len(self.__aliveTable)):
-                        if self.__aliveTable[node]['is_alive'] and (node not in self.__filesTable[file]):
+                        if self.__aliveTable[node]['isAlive'] and (node not in self.__filesTable[file]):
                             dstNode = node
                             break
                     if dstNode == -1:
@@ -128,16 +128,16 @@ class Master:
                     self.__usedPorts[i][j] = True
                     if len(freePorts) == 0:
                         msg = {'requestType': 'download', 'mode' : 1, 'fileName': fileName}
-                        self.__dataKeeperSocket.connect("tcp://%s:%s" % (i, j)
+                        self.__dataKeeperSocket.connect("tcp://%s:%s" % (i, j))
                         self.__dataKeeperSocket.send_json(msg)
                         msg = self.__dataKeeperSocket.recv_pyobj()
                         size = msg['size']
-                    freePorts.append{'Node': i, 'Port': j}
+                    freePorts.append({'Node': i, 'Port': j})
         MOD = len(freePorts)
         j = 0
         downloadPorts = []
         for i in freePorts:
-            self.__dataKeeperSocket.connect("tcp://%s:%s" % (i['Node'], i['Port'])
+            self.__dataKeeperSocket.connect("tcp://%s:%s" % (i['Node'], i['Port']))
             self.__dataKeeperSocket.send_json({'fileName': fileName, 'mode': 2, 'm': j, 'MOD': MOD})
             j += 1
             downloadPort = self.__dataKeeperSocket.recv_pyobj()
