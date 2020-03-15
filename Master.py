@@ -13,15 +13,11 @@ class Master:
         self.__clientPort = Conf.MASTER_CLIENT_PORTs[self.__PID]
 
     def __initConnection(self):
-        self.__dataKeepersSocket = {}
         self.__context = zmq.Context()
         self.__successSocket = self.__context.socket(zmq.PULL)
         self.__clientSocket = self.__context.socket(zmq.REP)
         self.__clientSocket.bind("tcp://%s:%s" % (self.__IP, self.__clientPort))
-        for dKIP in Conf.DATA_KEEPER_IPs:
-            self.__dataKeepersSocket[dKIP] = self.__context.socket(zmq.REQ)
-            for dKPort in Conf.DATA_KEEPER_MASTER_PORTs:
-                self.__dataKeepersSocket[dKIP].connect("tcp://%s:%s" % (dKIP, dKPort))
+        self.__dataKeeperSocket = self.__context.socket(zmq.PAIR)
         for dKIP in Conf.DATA_KEEPER_IPs:
             for dKPort in Conf.DATA_KEEPER_SUCCESS_PORTs:
                 self.__successSocket.connect("tcp://%s:%s" % (dKIP, dKPort))
@@ -122,11 +118,41 @@ class Master:
         self.__clientSocket.send_json(freePort)
         # print("msg sent to client")
 
+    def __receiveDownloadRequest(self, fileName):
+        self.__lockUpload.acquire()
+        freePorts = []
+        size = 0
+        for i in self.__filesTable[fileName]['nodes']:
+            for j in Conf.DATA_KEEPER_MASTER_PORTs:
+                if(self.__usedPorts[i][j] == False):
+                    self.__usedPorts[i][j] = True
+                    if len(freePorts) == 0:
+                        msg = {'requestType': 'download', 'mode' : 1, 'fileName': fileName}
+                        self.__dataKeeperSocket.connect("tcp://%s:%s" % (i, j)
+                        self.__dataKeeperSocket.send_json(msg)
+                        msg = self.__dataKeeperSocket.recv_pyobj()
+                        size = msg['size']
+                    freePorts.append{'Node': i, 'Port': j}
+        MOD = len(freePorts)
+        j = 0
+        downloadPorts = []
+        for i in freePorts:
+            self.__dataKeeperSocket.connect("tcp://%s:%s" % (i['Node'], i['Port'])
+            self.__dataKeeperSocket.send_json({'fileName': fileName, 'mode': 2, 'm': j, 'MOD': MOD})
+            j += 1
+            downloadPort = self.__dataKeeperSocket.recv_pyobj()
+            downloadPorts.append(downloadPort)
+        self.__clientSocket.send_json({'freeports': downloadPorts, 'numberofchunks': size})
+        self.__lockUpload.release()
+
+    
     def __receiveRequestFromClient(self):
         message = self.__clientSocket.recv_json()
         # print("msg got")
         if message['requestType'] == 'upload':
             self.__receiveUploadRequest()
+        if message['requestType'] == 'download':
+            self.__receiveDownloadRequest(message['file'])
               
         # else:
         #     DOWNLOAD()

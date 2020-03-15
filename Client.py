@@ -19,17 +19,26 @@ class Client:
         self.__ID = ID
         self.__initConnection()
 
-    def __downloadFromNode(self, filePath, addresses):
+    def __downloadFromNode(self, filePath, masterMsg):
+        addresses = masterMsg['freeports']
+        numberOfChunks = masterMsg['numberofchunks']
         downSocket = self.__context.socket(zmq.PULL)
         for address in addresses:
-            downSocket.connect("tcp://%s:%s"%(address[0], address[1]))
-        data = downSocket.recv()
+            downSocket.connect("tcp://%s:%s"%(address['IP'], address['PORT']))
+        data = []
+        while numberOfChunks > 0:
+            msg = downSocket.recv_pyobj()
+            data.append(msg)
+        data = sorted(data, key=lambda i: i['chunckNumber'])
+        
         with open(filePath, "wb") as file:
-            file.write(data)
+            for i in data:
+                file.write(i['data'])
 
         for address in addresses:
             downSocket.disconnect("tcp://%s:%s"%(address[0], address[1]))
         downSocket.close()
+        return 'successful download'
         
     def sendUploadRequest(self, fileName, filePath):
         with open(filePath, "rb") as file:
@@ -48,8 +57,14 @@ class Client:
             socket_upload.disconnect("tcp://%s:%s"%(freePort['IP'], freePort['PORT']))
             socket_upload.close()
 
-    def sendDownloadRequest(self, filename):
-        pass
+    def sendDownloadRequest(self, fileName, filePath):
+        requestMsg = {'requestType': 'download', 'file': fileName}
+        self.__masterSocket.send_json(requestMsg)
+        responseMsg = self.__masterSocket.recv_json()
+        if  len(responseMsg['freeports']) == 0:
+            return 'Failed to download'
+        ret = self.__downloadFromNode(filePath, responseMsg)
+        print(ret)
 
 if __name__ == '__main__':
     
@@ -66,7 +81,8 @@ if __name__ == '__main__':
             cl1.sendUploadRequest(fileName, filePath)
         elif command == 'download':
             fileName = input("Enter filename: ")
-            cl1.sendDownloadRequest(fileName)
+            filePath = input("Enter filePath: ")
+            cl1.sendDownloadRequest(fileName, filePath)
         else:
             print("%s: command not found" % (command))
 

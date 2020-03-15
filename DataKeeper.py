@@ -3,6 +3,7 @@ import sys
 import multiprocessing
 import Conf
 import time
+import os
     
 class DataKeeper:
 
@@ -44,8 +45,8 @@ class DataKeeper:
             socks = dict(self.__poller.poll())
             if self.__masterSocket in socks and socks[self.__masterSocket] == zmq.POLLIN:
                 # Request message from master
-                self.receiveRequestsFromMaster()
-            elif self.__clientSocket in socks and socks[self.__clientSocket] == zmq.POLLIN:
+                self.__receiveRequestsFromMaster()
+            elif self.__uploadSocket in socks and socks[self.__uploadSocket] == zmq.POLLIN:
                 # Upload request, whether from client or a node
                 self.__receiveUploadRequest()
                 
@@ -57,7 +58,7 @@ class DataKeeper:
             self.__masterSocket.send_string("")
             
             if msg['requestType'] == 'download':
-                self.__receiveDownloadRequest()
+                self.__receiveDownloadRequest(msg)
             elif msg['requestType'] == 'replica':
                 pass
     
@@ -73,8 +74,34 @@ class DataKeeper:
         self.__successSocket.send_json(successMessage)
         #print("done")
 
-    def __receiveDownloadRequest(self):
-        pass
+    def __receiveDownloadRequest(self, msg):
+        chunksize = Conf.CHUNK_SIZE
+        if msg['mode'] == 1:
+            fileName = msg['fileName']
+            size = os.stat(fileName).st_size
+            size = (size+chunksize-1)//chunksize
+            self.__masterSocket.send_pyobj({'size': size})
+            msg = self.__masterSocket.recv_json()
+        MOD = msg['MOD']
+        m = msg['m']  # data keeper downloads all chuncks where chunk number % MOD = m
+        fileName = msg['fileName']
+        self.__masterSocket.send_pyobj({'IP': self.__IP, 'PORT' : self.__downloadPort})
+        self.__downloadToClient(MOD, m, fileName)
+
+    def __downloadToClient(self, MOD, m, fileName):
+        chunksize = Conf.CHUNK_SIZE
+        size = os.stat(fileName).st_size
+        size = (size+chunksize-1)//chunksize
+        NumberofChuncks = size//MOD + (size%MOD >= m)
+        with open(fileName, "rb") as file:
+            for i in range(NumberofChuncks):
+                step = chunksize*i
+                file.seek(step*MOD + chunksize*m)
+                chunk = file.read(chunksize)
+                self.__downloadSocket.send_pyobj({'chunckNumber': i*MOD+m, 'data': chunk})
+        successMessage = {'fileName': fileName, 'clientID': -1, 'nodeID': self.__ID, 'processID': self.__PID }
+        self.__successSocket.send_json(successMessage)
+
 
     def __sendToClient(self, filePath):
         with open(filePath, "rb") as file:
