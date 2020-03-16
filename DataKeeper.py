@@ -47,16 +47,14 @@ class DataKeeper(multiprocessing.Process):
                 self.__receiveUploadRequest()
                 
     def __receiveRequestsFromMaster(self):
-        #Need to be modified to receive message prompting it to send to client or to a given-address node
-        while True:
-            msg = self.__masterSocket.recv_json()
-            print("msg received in DK")
-            self.__masterSocket.send_string("")
-            
-            if msg['requestType'] == 'download':
-                self.__receiveDownloadRequest(msg)
-            elif msg['requestType'] == 'replica':
-                pass
+        # Need to be modified to receive message prompting it to send to client or to a given-address node
+        msg = self.__masterSocket.recv_json()
+        print("msg received in DK")
+        
+        if msg['requestType'] == 'download':
+            self.__receiveDownloadRequest(msg)
+        elif msg['requestType'] == 'replica':
+            pass
     
     def __receiveUploadRequest(self):
         rec = self.__uploadSocket.recv_pyobj()
@@ -104,13 +102,15 @@ class DataKeeper(multiprocessing.Process):
         with open(filePath, "rb") as file:
             self.__downloadSocket.send(file.read())
     
-    def heartBeatsConfiguration(self):
+    def __heartBeatsConfiguration(self):
         context = zmq.Context()
         self.__aliveSocket = context.socket(zmq.PUB)
         self.__aliveSocket.bind("tcp://%s:%s"%(self.__IP, Conf.ALIVE_PORT))
 
     def heartBeats(self):
+        self.__heartBeatsConfiguration()
         while True:
+            # print("alive")
             self.__aliveSocket.send_string("%d" % (self.__ID))
             time.sleep(1)
     
@@ -129,7 +129,6 @@ if __name__ == '__main__':
         processes[i].start()
 
     # start one differnt process to send heartbeats to the Master
-    processes[0].heartBeatsConfiguration()
     heartBeatsProcess = multiprocessing.Process(target=processes[0].heartBeats)
     heartBeatsProcess.start()
 
