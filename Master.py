@@ -17,7 +17,7 @@ class Master(multiprocessing.Process):
         self.__successSocket = context.socket(zmq.PULL)
         self.__clientSocket = context.socket(zmq.REP)
         self.__clientSocket.bind("tcp://%s:%s" % (self.__IP, self.__clientPort))
-        self.__dataKeeperSocket = context.socket(zmq.PAIR)
+        self.__dataKeeperSocket = context.socket(zmq.REQ)
         for dKIP in Conf.DATA_KEEPER_IPs:
             for dKPort in Conf.DATA_KEEPER_SUCCESS_PORTs:
                 self.__successSocket.connect("tcp://%s:%s" % (dKIP, dKPort))
@@ -53,39 +53,58 @@ class Master(multiprocessing.Process):
                             break
                     if dstNode == -1:
                         raise Exception("Can't find a data keeper to replicate file: `%s`" % file)
-                    sendPort = self.sendRequest(srcNode, file)
-                    self.receiveRequest(dstNode, sendPort)
+                    srcPID = 0
+                    lock.acquire()
+                    while usedPorts[srcNode][srcPID] == False:
+                        srcPID = (srcPID+1)%Conf.DATA_KEEPER_MASTER_PORTs
+                    usedPorts[srcNode][srcPID] = True
+                    dstPID = 0
+                    while usedPorts[dstNode][dstPID] == False:
+                        dstPID = (dstPID+1)%Conf.DATA_KEEPER_MASTER_PORTs
+                    usedPorts[dstNode][dstPID] = True
+                    lock.release()
+                    srcPort = {'IP': Conf.DATA_KEEPER_IPs[srcNode], 'PORT': Conf.DATA_KEEPER_MASTER_PORTs[srcPID]}
+                    sendPort = self.__sendSrcReplicaRequest(srcPort, file)
+                    dstPort = {'IP': Conf.DATA_KEEPER_IPs[dstNode], 'PORT': Conf.DATA_KEEPER_MASTER_PORTs[dstPID]}
+                    self.__sendDstReplicaRequest(dstPort, srcNode, file)
                     # blocking wait until success message is received 
                     # and file is added in destination node
                     while dstNode not in filesTable[file]:
                         continue
                     cnt += 1
     
-    def sendRequest(self, srcNode, file):
-        pass
+    def __sendSrcReplicaRequest(self, srcNode, fileName):
+        msg = {'requestType':'replicaSrc', 'fileName': fileName};
+        self.__dataKeeperSocket.connect("tcp://%s:%s" % (srcNode['IP'], srcNode['PORT']))
+        self.__dataKeeperSocket.send_json(msg)
+        port = self.__dataKeeperSocket.recv_json()
+        self.__dataKeeperSocket.disconnect("tcp://%s:%s" % (srcNode['IP'], srcNode['PORT']))
+        return port
 
-    def receiveRequest(self, dstNode, sendPort):
-        pass
+    def __sendDstReplicaRequest(self, dstNode, srcNode, fileName):
+        msg = {'requestType': 'replicaDst', 'srcNode': srcNode, 'fileName': fileName};
+        self.__dataKeeperSocket.connect("tcp://%s:%s" % (dstNode['IP'], dstNode['PORT']))
+        self.__dataKeeperSocket.send_json(msg)
+        self.__dataKeeperSocket.recv_json()
+        self.__dataKeeperSocket.disconnect("tcp://%s:%s" % (dstNode['IP'], dstNode['PORT']))
                 
     # this method should be called in server main process 
     # to update the files table if a data keeper received a file
     def __checkSuccess(self):
         message = self.__successSocket.recv_json()
-        if message['clientID'] == -1:
-            usedPorts [message['nodeID']][message['processID']] = False
-            return
-        if message['fileName'] not in filesTable:
-            filesTable[message['fileName']] = manager.dict({'ClientID': message['clientID'], 'nodes': manager.list()})
-        filesTable[message['fileName']]['nodes'].append(message['nodeID'])
+        if message['clientID'] != -1:
+            lock.acquire()
+            if message['fileName'] not in filesTable:
+                filesTable[message['fileName']] = manager.dict({'clientID': message['clientID'], 'nodes': manager.list()})
+            filesTable[message['fileName']]['nodes'].append(message['nodeID'])
+            lock.release()
         usedPorts [message['nodeID']][message['processID']] = False
-        print(filesTable)
-        print(usedPorts [message['nodeID']][message['processID']])
         
 
     def __chooseUploadNode (self):
         numNodes = len(Conf.DATA_KEEPER_IPs)
         numProcessesInNodes = len(Conf.DATA_KEEPER_MASTER_PORTs)
-        lockUpload.acquire()
+        lock.acquire()
         currentNode = RRNodeItr.value
         currentProcess = RRProcessItr.value
         while usedPorts[RRNodeItr.value][RRProcessItr.value] == True or aliveTable[RRNodeItr.value]['isAlive'] == False:
@@ -101,7 +120,7 @@ class Master(multiprocessing.Process):
             RRNodeItr.value %=numNodes
             
         usedPorts[RRNodeItr.value][RRProcessItr.value] = True
-        lockUpload.release()
+        lock.release()
         freePort = {'IP': Conf.DATA_KEEPER_IPs[RRNodeItr.value] ,
          'PORT': Conf.DATA_KEEPER_UPLOAD_PORTs[RRProcessItr.value] }
         return freePort
@@ -115,7 +134,6 @@ class Master(multiprocessing.Process):
         if fileName not in filesTable:
             self.__clientSocket.send_json({'message': "file not found"})
             return
-        lockUpload.acquire()
         freePorts = []
         size = 0
         for i in filesTable[fileName]['nodes']:
@@ -123,8 +141,10 @@ class Master(multiprocessing.Process):
                 continue
             Node_IP = Conf.DATA_KEEPER_IPs[i]
             for j in range(len(Conf.DATA_KEEPER_MASTER_PORTs)):
+                lock.acquire()
                 if(usedPorts[i][j] == False):
                     usedPorts[i][j] = True
+                    lock.release()
                     Node_Port = Conf.DATA_KEEPER_MASTER_PORTs[j]
                     if len(freePorts) == 0:
                         msg = {'requestType': 'download', 'mode' : 1, 'fileName': fileName}
@@ -135,7 +155,8 @@ class Master(multiprocessing.Process):
                         print("size of requested file = {}".format(size))
                         self.__dataKeeperSocket.disconnect("tcp://%s:%s" % (Node_IP, Node_Port))
                     freePorts.append({'Node': Node_IP, 'Port': Node_Port})
-        lockUpload.release()
+                else:
+                    lock.release()
         MOD = len(freePorts)
         j = 0
         downloadPorts = []
@@ -206,7 +227,7 @@ class Master(multiprocessing.Process):
 if __name__ == '__main__':
     # initialize shared memory
     manager = multiprocessing.Manager()
-    lockUpload = multiprocessing.Lock()
+    lock = multiprocessing.Lock()
     RRNodeItr = manager.Value('i',0) 
     RRProcessItr = manager.Value('i',0)
     usedPorts = manager.dict()
@@ -232,10 +253,10 @@ if __name__ == '__main__':
     aliveProcess.start()
 
     # start one different process to handle generating replicates
-    # replicaProcess = multiprocessing.Process(target=servers[0].makeReplicates)
-    # replicaProcess.start()
+    replicaProcess = multiprocessing.Process(target=servers[0].makeReplicates)
+    replicaProcess.start()
 
     for i in range(len(Conf.MASTER_CLIENT_PORTs)):
         servers[i].join()
-    # replicaProcess.join()
+    replicaProcess.join()
     aliveProcess.join()

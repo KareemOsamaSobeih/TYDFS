@@ -16,7 +16,7 @@ class DataKeeper(multiprocessing.Process):
 
     def __initConnection(self):
         context = zmq.Context()
-        self.__masterSocket = context.socket(zmq.PAIR)
+        self.__masterSocket = context.socket(zmq.REP)
         self.__masterSocket.bind("tcp://%s:%s" % (self.__IP, self.__masterPort))
         self.__successSocket = context.socket(zmq.PUSH)
         self.__successSocket.bind("tcp://%s:%s" % (self.__IP, self.__successPort))
@@ -24,6 +24,7 @@ class DataKeeper(multiprocessing.Process):
         self.__downloadSocket.bind("tcp://%s:%s" % (self.__IP, self.__downloadPort))
         self.__uploadSocket = context.socket(zmq.PULL)
         self.__uploadSocket.bind("tcp://%s:%s" % (self.__IP, self.__uploadPort))
+        self.__replicaRcvSocket = context.socket(zmq.PULL)
         self.__poller = zmq.Poller()
         self.__poller.register(self.__masterSocket, zmq.POLLIN)
         self.__poller.register(self.__uploadSocket, zmq.POLLIN)
@@ -53,13 +54,16 @@ class DataKeeper(multiprocessing.Process):
         
         if msg['requestType'] == 'download':
             self.__receiveDownloadRequest(msg)
-        elif msg['requestType'] == 'replica':
-            pass
+        elif msg['requestType'] == 'replicaSrc':
+            self.__receiveReplicaSrcRequest(msg)
+        elif msg['requestType'] == 'replicaDst':
+            self.__receiveReplicaDstRequest(msg)
     
     def __receiveUploadRequest(self):
         rec = self.__uploadSocket.recv_pyobj()
         print("video rec")
-        with open(rec['fileName'], "wb") as out_file:  # open for [w]riting as [b]inary
+        filePath = "data/DataKeeper/{}/{}".format(self.__ID, rec['fileName'])
+        with open(filePath, "wb") as out_file:  # open for [w]riting as [b]inary
                 out_file.write(rec['file'])
         # lockSave.acquire()
         # self.__storage[rec['fileName']] = {'file': rec['file'], 'clientID': rec['clientID']}
@@ -73,7 +77,8 @@ class DataKeeper(multiprocessing.Process):
         if msg['mode'] == 1:
             chunksize = Conf.CHUNK_SIZE
             fileName = msg['fileName']
-            size = os.stat(fileName).st_size
+            filePath = "data/DataKeeper/{}/{}".format(self.__ID, fileName)
+            size = os.stat(filePath).st_size
             size = (size+chunksize-1)//chunksize
             self.__masterSocket.send_pyobj({'size': size})
         else:
@@ -87,10 +92,11 @@ class DataKeeper(multiprocessing.Process):
     def __downloadToClient(self, MOD, m, fileName):
         print("downloading to client")
         chunksize = Conf.CHUNK_SIZE
-        size = os.stat(fileName).st_size
+        filePath = "data/DataKeeper/{}/{}".format(self.__ID, fileName)
+        size = os.stat(filePath).st_size
         size = (size+chunksize-1)//chunksize
         NumberofChuncks = size//MOD + (size%MOD >= m)
-        with open(fileName, "rb") as file:
+        with open(filePath, "rb") as file:
             for i in range(NumberofChuncks):
                 step = chunksize*i
                 file.seek(step*MOD + chunksize*m)
@@ -103,10 +109,40 @@ class DataKeeper(multiprocessing.Process):
         self.__successSocket.send_json(successMessage)
 
 
-    def __sendToClient(self, filePath):
+    def __receiveReplicaSrcRequest(self, msg):
+        self.__masterSocket.send_json({'IP': self.__IP, 'PORT' : self.__downloadPort})
+        filePath = "data/DataKeeper/{}/{}".format(self.__ID, msg['fileName'])
+
         with open(filePath, "rb") as file:
             self.__downloadSocket.send(file.read())
-    
+
+        successMessage = {
+            'fileName': msg['fileName'],
+            'clientID': -1,
+            'nodeID': self.__ID,
+            'processID': self.__PID
+        }
+        self.__successSocket.send_json(successMessage)
+
+    def __receiveReplicaDstRequest(self, msg):
+        self.__masterSocket.send_string("received src node")
+        srcNode = msg['srcNode']
+        filePath = "data/DataKeeper/{}/{}".format(self.__ID, msg['fileName'])
+        self.__replicaRcvSocket.connect("tcp://%s:%s" % (srcNode['IP'], srcNode['PORT']))
+        file = self.__replicaRcvSocket.recv()
+        self.__replicaRcvSocket.disconnect("tcp://%s:%s" % (srcNode['IP'], srcNode['PORT']))
+
+        with open(filePath, "wb") as out_file:
+            out_file.write(file)
+            
+        successMessage = {
+            'fileName': msg['fileName'],
+            'clientID': self.__ID,
+            'nodeID': self.__ID,
+            'processID': self.__PID
+        }
+        self.__successSocket.send_json(successMessage)
+
     def __heartBeatsConfiguration(self):
         context = zmq.Context()
         self.__aliveSocket = context.socket(zmq.PUB)
