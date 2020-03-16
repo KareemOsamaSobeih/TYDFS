@@ -63,11 +63,12 @@ class Client:
     def sendDownloadRequest(self, fileName, filePath):
         requestMsg = {'requestType': 'download', 'file': fileName}
         self.__masterSocket.send_json(requestMsg)
+        # print("download request sent from client to master")
         responseMsg = self.__masterSocket.recv_json()
-        if  len(responseMsg['freeports']) == 0:
+        # print("download response received from master to client")
+        if len(responseMsg['freeports']) == 0:
             return 'Failed to download'
-        ret = self.__downloadFromNode(filePath, responseMsg)
-        print(ret)
+        return self.__downloadFromNode(filePath, responseMsg)
 
 if __name__ == '__main__':
     
@@ -85,7 +86,7 @@ if __name__ == '__main__':
         elif command == 'download':
             fileName = input("Enter filename: ")
             filePath = input("Enter filePath: ")
-            cl1.sendDownloadRequest(fileName, filePath)
+            print(cl1.sendDownloadRequest(fileName, filePath))
         else:
             print("%s: command not found" % (command))
 

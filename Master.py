@@ -74,9 +74,9 @@ class Master(multiprocessing.Process):
         if message['clientID'] == -1:
             usedPorts [message['nodeID']][message['processID']] = False
             return
-        if message['file_name'] not in self.filesTable:
-            self.filesTable[message['file_name']] = {'ClientID': message['clientID'], 'nodes': []}     
-        self.filesTable[message['file_name']]['nodes'].append(message['node_ID'])
+        if message['fileName'] not in filesTable:
+            filesTable[message['fileName']] = {'ClientID': message['clientID'], 'nodes': []}     
+        filesTable[message['fileName']]['nodes'].append(message['nodeID'])
         usedPorts [message['nodeID']][message['processID']] = False
         
 
