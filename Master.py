@@ -75,9 +75,11 @@ class Master(multiprocessing.Process):
             usedPorts [message['nodeID']][message['processID']] = False
             return
         if message['fileName'] not in filesTable:
-            filesTable[message['fileName']] = {'ClientID': message['clientID'], 'nodes': []}     
+            filesTable[message['fileName']] = manager.dict({'ClientID': message['clientID'], 'nodes': manager.list()})
         filesTable[message['fileName']]['nodes'].append(message['nodeID'])
         usedPorts [message['nodeID']][message['processID']] = False
+        print(filesTable)
+        print(usedPorts [message['nodeID']][message['processID']])
         
 
     def __chooseUploadNode (self):
@@ -110,6 +112,9 @@ class Master(multiprocessing.Process):
         print("msg sent to client")
 
     def __receiveDownloadRequest(self, fileName):
+        if fileName not in filesTable:
+            self.__clientSocket.send_json({'message': "file not found"})
+            return
         lockUpload.acquire()
         freePorts = []
         size = 0
@@ -127,18 +132,25 @@ class Master(multiprocessing.Process):
                         self.__dataKeeperSocket.send_json(msg)
                         msg = self.__dataKeeperSocket.recv_pyobj()
                         size = msg['size']
+                        print("size of requested file = {}".format(size))
+                        self.__dataKeeperSocket.disconnect("tcp://%s:%s" % (Node_IP, Node_Port))
                     freePorts.append({'Node': Node_IP, 'Port': Node_Port})
         lockUpload.release()
         MOD = len(freePorts)
         j = 0
         downloadPorts = []
         for i in freePorts:
+            print("connect to {}".format(i))
             self.__dataKeeperSocket.connect("tcp://%s:%s" % (i['Node'], i['Port']))
-            self.__dataKeeperSocket.send_json({'fileName': fileName, 'mode': 2, 'm': j, 'MOD': MOD})
+            self.__dataKeeperSocket.send_json({'requestType': 'download', 'fileName': fileName, 'mode': 2, 'm': j, 'MOD': MOD})
+            print ("download port request sent")
             j += 1
             downloadPort = self.__dataKeeperSocket.recv_pyobj()
+            print ("received download port from DK {}".format(downloadPort))
             self.__dataKeeperSocket.disconnect("tcp://%s:%s"% (i['Node'], i['Port']))
+            print("disconnect from {}".format(i))
             downloadPorts.append(downloadPort)
+        print("sending download ports to client: {}".format(downloadPorts))
         self.__clientSocket.send_json({'freeports': downloadPorts, 'numberofchunks': size})
 
     

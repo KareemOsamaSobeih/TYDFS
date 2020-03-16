@@ -16,7 +16,7 @@ class DataKeeper(multiprocessing.Process):
 
     def __initConnection(self):
         context = zmq.Context()
-        self.__masterSocket = context.socket(zmq.REP)
+        self.__masterSocket = context.socket(zmq.PAIR)
         self.__masterSocket.bind("tcp://%s:%s" % (self.__IP, self.__masterPort))
         self.__successSocket = context.socket(zmq.PUSH)
         self.__successSocket.bind("tcp://%s:%s" % (self.__IP, self.__successPort))
@@ -38,7 +38,7 @@ class DataKeeper(multiprocessing.Process):
         self.__initConnection()
         while True:
             # check if any message is received from client or Data keeper
-            socks = dict(self.__poller.poll())
+            socks = dict(self.__poller.poll(5))
             if self.__masterSocket in socks and socks[self.__masterSocket] == zmq.POLLIN:
                 # Request message from master
                 self.__receiveRequestsFromMaster()
@@ -69,20 +69,23 @@ class DataKeeper(multiprocessing.Process):
         print("done")
 
     def __receiveDownloadRequest(self, msg):
-        chunksize = Conf.CHUNK_SIZE
+        print(msg)
         if msg['mode'] == 1:
+            chunksize = Conf.CHUNK_SIZE
             fileName = msg['fileName']
             size = os.stat(fileName).st_size
             size = (size+chunksize-1)//chunksize
             self.__masterSocket.send_pyobj({'size': size})
-            msg = self.__masterSocket.recv_json()
-        MOD = msg['MOD']
-        m = msg['m']  # data keeper downloads all chuncks where chunk number % MOD = m
-        fileName = msg['fileName']
-        self.__masterSocket.send_pyobj({'IP': self.__IP, 'PORT' : self.__downloadPort})
-        self.__downloadToClient(MOD, m, fileName)
+        else:
+            MOD = msg['MOD']
+            m = msg['m']  # data keeper downloads all chuncks where chunk number % MOD = m
+            fileName = msg['fileName']
+            self.__masterSocket.send_pyobj({'IP': self.__IP, 'PORT' : self.__downloadPort})
+            print("sent download port to master {}".format({'IP': self.__IP, 'PORT' : self.__downloadPort}))
+            self.__downloadToClient(MOD, m, fileName)
 
     def __downloadToClient(self, MOD, m, fileName):
+        print("downloading to client")
         chunksize = Conf.CHUNK_SIZE
         size = os.stat(fileName).st_size
         size = (size+chunksize-1)//chunksize
@@ -93,7 +96,9 @@ class DataKeeper(multiprocessing.Process):
                 file.seek(step*MOD + chunksize*m)
                 chunk = file.read(chunksize)
                 chunkNumber = (i*MOD+m).to_bytes(4,"big")
+                print("sending file")
                 self.__downloadSocket.send_multipart([chunkNumber,chunk])
+                print("file is sent")
         successMessage = {'fileName': fileName, 'clientID': -1, 'nodeID': self.__ID, 'processID': self.__PID }
         self.__successSocket.send_json(successMessage)
 

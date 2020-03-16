@@ -20,6 +20,7 @@ class Client:
         self.__initConnection()
 
     def __downloadFromNode(self, filePath, masterMsg):
+        print("downloading from data keepers")
         addresses = masterMsg['freeports']
         numberOfChunks = masterMsg['numberofchunks']
         downSocket = self.__context.socket(zmq.PULL)
@@ -65,9 +66,12 @@ class Client:
         self.__masterSocket.send_json(requestMsg)
         # print("download request sent from client to master")
         responseMsg = self.__masterSocket.recv_json()
-        # print("download response received from master to client")
-        if len(responseMsg['freeports']) == 0:
-            return 'Failed to download'
+        print("download response received from master to client:\n{}".format(responseMsg))
+        if 'freeports'not in responseMsg or len(responseMsg['freeports']) == 0:
+            msg = 'Failed to download'
+            if ('message' in responseMsg):
+                msg += ': '+ responseMsg["message"]
+            return msg
         return self.__downloadFromNode(filePath, responseMsg)
 
 if __name__ == '__main__':
