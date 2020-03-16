@@ -94,7 +94,8 @@ class DataKeeper(multiprocessing.Process):
                 step = chunksize*i
                 file.seek(step*MOD + chunksize*m)
                 chunk = file.read(chunksize)
-                self.__downloadSocket.send_pyobj({'chunckNumber': i*MOD+m, 'data': chunk})
+                chunkNumber = (i*MOD+m).to_bytes(4,"big")
+                self.__downloadSocket.send_multipart([chunkNumber,chunk])
         successMessage = {'fileName': fileName, 'clientID': -1, 'nodeID': self.__ID, 'processID': self.__PID }
         self.__successSocket.send_json(successMessage)
 
