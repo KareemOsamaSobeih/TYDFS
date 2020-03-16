@@ -74,6 +74,7 @@ class Master(multiprocessing.Process):
                     lock.release()
                     srcPort = {'IP': Conf.DATA_KEEPER_IPs[srcNode], 'PORT': Conf.DATA_KEEPER_MASTER_PORTs[srcPID]}
                     sendPort = self.__sendSrcReplicaRequest(srcPort, file)
+                    print(sendPort)
                     dstPort = {'IP': Conf.DATA_KEEPER_IPs[dstNode], 'PORT': Conf.DATA_KEEPER_MASTER_PORTs[dstPID]}
                     self.__sendDstReplicaRequest(dstPort, sendPort, file)
                     # blocking wait until success message is received 
@@ -109,6 +110,7 @@ class Master(multiprocessing.Process):
             lock.release()
         usedPorts [message['nodeID']][message['processID']] = False
         print("success:", filesTable[message['fileName']]['nodes'])
+        print(usedPorts[0], usedPorts[1], usedPorts[2])
         
 
     def __chooseUploadNode (self):

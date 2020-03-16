@@ -13,6 +13,7 @@ class DataKeeper(multiprocessing.Process):
         self.__successPort = Conf.DATA_KEEPER_SUCCESS_PORTs[self.__PID]
         self.__downloadPort = Conf.DATA_KEEPER_DOWNLOAD_PORTs[self.__PID]
         self.__uploadPort = Conf.DATA_KEEPER_UPLOAD_PORTs[self.__PID]
+        self.__replicaPort = Conf.DATA_KEEPER_REPLICA_PORTs[self.__PID]
 
     def __initConnection(self):
         context = zmq.Context()
@@ -24,7 +25,9 @@ class DataKeeper(multiprocessing.Process):
         self.__downloadSocket.bind("tcp://%s:%s" % (self.__IP, self.__downloadPort))
         self.__uploadSocket = context.socket(zmq.PULL)
         self.__uploadSocket.bind("tcp://%s:%s" % (self.__IP, self.__uploadPort))
-        self.__replicaRcvSocket = context.socket(zmq.PULL)
+        self.__replicaSendSocket = context.socket(zmq.REP)
+        self.__replicaSendSocket.bind("tcp://%s:%s" % (self.__IP, self.__replicaPort))
+        self.__replicaRcvSocket = context.socket(zmq.REQ)
         self.__poller = zmq.Poller()
         self.__poller.register(self.__masterSocket, zmq.POLLIN)
         self.__poller.register(self.__uploadSocket, zmq.POLLIN)
@@ -109,12 +112,13 @@ class DataKeeper(multiprocessing.Process):
 
     def __receiveReplicaSrcRequest(self, msg):
         print("received replica src request")
-        self.__masterSocket.send_json({'IP': self.__IP, 'PORT' : self.__downloadPort})
+        self.__masterSocket.send_json({'IP': self.__IP, 'PORT' : self.__replicaPort})
         filePath = "data/DataKeeper/{}/{}".format(self.__ID, msg['fileName'])
 
         print("sending file to dst from src")
+        self.__replicaSendSocket.recv_string()
         with open(filePath, "rb") as file:
-            self.__downloadSocket.send(file.read())
+            self.__replicaSendSocket.send(file.read())
         print ("file is sent to data keeper")
         successMessage = {
             'fileName': msg['fileName'],
@@ -132,6 +136,7 @@ class DataKeeper(multiprocessing.Process):
         print("dst connecting to {}".format(srcNode))
         self.__replicaRcvSocket.connect("tcp://%s:%s" % (srcNode['IP'], srcNode['PORT']))
         print("dst connected and receiving")
+        self.__replicaRcvSocket.send_string("send file")
         file = self.__replicaRcvSocket.recv()
         self.__replicaRcvSocket.disconnect("tcp://%s:%s" % (srcNode['IP'], srcNode['PORT']))
         print("dst disconnected from {}".format(srcNode))
