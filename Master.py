@@ -163,7 +163,7 @@ class Master(multiprocessing.Process):
                 # request from client
                 self.__receiveRequestFromClient()
     
-    def haertBeatsConfiguration(self):
+    def __haertBeatsConfiguration(self):
         context = zmq.Context()
         self.__aliveSocket = context.socket(zmq.SUB)
         self.__aliveSocket.setsockopt_string(zmq.SUBSCRIBE, "")
@@ -175,7 +175,9 @@ class Master(multiprocessing.Process):
         self.__alivePoller.register(self.__aliveSocket, zmq.POLLIN)
 
     def heartBeats(self):
+        self.__haertBeatsConfiguration()
         while True:
+            # print("check alive")
             socks = dict(self.__alivePoller.poll(1000))
             if socks:
                 topic =  int ( self.__aliveSocket.recv_string(zmq.NOBLOCK) )
@@ -187,7 +189,7 @@ class Master(multiprocessing.Process):
                 # consider dead
                 if( (datetime.datetime.now() - aliveTable[i]["lastTimeAlive"]).seconds > 1):
                     aliveTable[i]["isAlive"] = False
-                print(i,aliveTable[i]["isAlive"])
+                # print(i,aliveTable[i]["isAlive"])
 
 if __name__ == '__main__':
     # initialize shared memory
@@ -214,7 +216,6 @@ if __name__ == '__main__':
         servers[i].start()
     
     # start one different process to handle alive messages from data keepers
-    servers[0].haertBeatsConfiguration()
     aliveProcess = multiprocessing.Process(target=servers[0].heartBeats)
     aliveProcess.start()
 

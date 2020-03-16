@@ -43,7 +43,7 @@ class Client:
         
     def sendUploadRequest(self, fileName, filePath):
         with open(filePath, "rb") as file:
-            toSend = {'fileName':fileName, 'file':file, 'clientID': self.__ID}
+            toSend = {'fileName':fileName, 'file':file.read(), 'clientID': self.__ID}
             msg = {'requestType': 'upload', 'file': fileName } 
             print("video fetched")
             self.__masterSocket.send_json(msg)
