@@ -73,7 +73,7 @@ class DataKeeper(multiprocessing.Process):
         print("done")
 
     def __receiveDownloadRequest(self, msg):
-        print(msg)
+        # print(msg)
         if msg['mode'] == 1:
             chunksize = Conf.CHUNK_SIZE
             fileName = msg['fileName']
@@ -86,7 +86,7 @@ class DataKeeper(multiprocessing.Process):
             m = msg['m']  # data keeper downloads all chuncks where chunk number % MOD = m
             fileName = msg['fileName']
             self.__masterSocket.send_pyobj({'IP': self.__IP, 'PORT' : self.__downloadPort})
-            print("sent download port to master {}".format({'IP': self.__IP, 'PORT' : self.__downloadPort}))
+            # print("sent download port to master {}".format({'IP': self.__IP, 'PORT' : self.__downloadPort}))
             self.__downloadToClient(MOD, m, fileName)
 
     def __downloadToClient(self, MOD, m, fileName):
@@ -102,20 +102,20 @@ class DataKeeper(multiprocessing.Process):
                 file.seek(step*MOD + chunksize*m)
                 chunk = file.read(chunksize)
                 chunkNumber = (i*MOD+m).to_bytes(4,"big")
-                print("sending file")
                 self.__downloadSocket.send_multipart([chunkNumber,chunk])
-                print("file is sent")
         successMessage = {'fileName': fileName, 'clientID': -1, 'nodeID': self.__ID, 'processID': self.__PID }
         self.__successSocket.send_json(successMessage)
 
 
     def __receiveReplicaSrcRequest(self, msg):
+        print("received replica src request")
         self.__masterSocket.send_json({'IP': self.__IP, 'PORT' : self.__downloadPort})
         filePath = "data/DataKeeper/{}/{}".format(self.__ID, msg['fileName'])
 
+        print("sending file to dst from src")
         with open(filePath, "rb") as file:
             self.__downloadSocket.send(file.read())
-
+        print ("file is sent to data keeper")
         successMessage = {
             'fileName': msg['fileName'],
             'clientID': -1,
@@ -125,12 +125,16 @@ class DataKeeper(multiprocessing.Process):
         self.__successSocket.send_json(successMessage)
 
     def __receiveReplicaDstRequest(self, msg):
+        print("received replica dst request")
         self.__masterSocket.send_string("received src node")
         srcNode = msg['srcNode']
         filePath = "data/DataKeeper/{}/{}".format(self.__ID, msg['fileName'])
+        print("dst connecting to {}".format(srcNode))
         self.__replicaRcvSocket.connect("tcp://%s:%s" % (srcNode['IP'], srcNode['PORT']))
+        print("dst connected and receiving")
         file = self.__replicaRcvSocket.recv()
         self.__replicaRcvSocket.disconnect("tcp://%s:%s" % (srcNode['IP'], srcNode['PORT']))
+        print("dst disconnected from {}".format(srcNode))
 
         with open(filePath, "wb") as out_file:
             out_file.write(file)
