@@ -16,7 +16,7 @@ class DataKeeper(multiprocessing.Process):
 
     def __initConnection(self):
         context = zmq.Context()
-        self.__masterSocket = context.socket(zmq.PAIR)
+        self.__masterSocket = context.socket(zmq.REP)
         self.__masterSocket.bind("tcp://%s:%s" % (self.__IP, self.__masterPort))
         self.__successSocket = context.socket(zmq.PUSH)
         self.__successSocket.bind("tcp://%s:%s" % (self.__IP, self.__successPort))

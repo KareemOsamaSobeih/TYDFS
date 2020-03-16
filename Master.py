@@ -17,7 +17,7 @@ class Master(multiprocessing.Process):
         self.__successSocket = context.socket(zmq.PULL)
         self.__clientSocket = context.socket(zmq.REP)
         self.__clientSocket.bind("tcp://%s:%s" % (self.__IP, self.__clientPort))
-        self.__dataKeeperSocket = context.socket(zmq.PAIR)
+        self.__dataKeeperSocket = context.socket(zmq.REQ)
         for dKIP in Conf.DATA_KEEPER_IPs:
             for dKPort in Conf.DATA_KEEPER_SUCCESS_PORTs:
                 self.__successSocket.connect("tcp://%s:%s" % (dKIP, dKPort))
@@ -115,7 +115,6 @@ class Master(multiprocessing.Process):
         if fileName not in filesTable:
             self.__clientSocket.send_json({'message': "file not found"})
             return
-        lockUpload.acquire()
         freePorts = []
         size = 0
         for i in filesTable[fileName]['nodes']:
@@ -123,8 +122,10 @@ class Master(multiprocessing.Process):
                 continue
             Node_IP = Conf.DATA_KEEPER_IPs[i]
             for j in range(len(Conf.DATA_KEEPER_MASTER_PORTs)):
+                lockUpload.acquire()
                 if(usedPorts[i][j] == False):
                     usedPorts[i][j] = True
+                    lockUpload.release()
                     Node_Port = Conf.DATA_KEEPER_MASTER_PORTs[j]
                     if len(freePorts) == 0:
                         msg = {'requestType': 'download', 'mode' : 1, 'fileName': fileName}
@@ -135,7 +136,8 @@ class Master(multiprocessing.Process):
                         print("size of requested file = {}".format(size))
                         self.__dataKeeperSocket.disconnect("tcp://%s:%s" % (Node_IP, Node_Port))
                     freePorts.append({'Node': Node_IP, 'Port': Node_Port})
-        lockUpload.release()
+                else:
+                    lockUpload.release()
         MOD = len(freePorts)
         j = 0
         downloadPorts = []
