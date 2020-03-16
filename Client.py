@@ -27,8 +27,10 @@ class Client:
             downSocket.connect("tcp://%s:%s"%(address['IP'], address['PORT']))
         data = []
         while numberOfChunks > 0:
-            msg = downSocket.recv_pyobj()
-            data.append(msg)
+            msg = downSocket.recv_multipart()
+            chunckNumber = int.from_bytes(msg[0], "big")
+            decodedmsg = {'chunckNumber' : chunckNumber, 'data': msg[1]}
+            data.append(decodedmsg)
             numberOfChunks -= 1
         data.sort(key=lambda i: i['chunckNumber'])
         
