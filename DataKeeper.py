@@ -97,12 +97,17 @@ class DataKeeper(multiprocessing.Process):
         chunksize = Conf.CHUNK_SIZE
         filePath = "data/DataKeeper/{}/{}".format(self.__ID, fileName)
         size = os.stat(filePath).st_size
+        sz = size
         size = (size+chunksize-1)//chunksize
         NumberofChuncks = size//MOD + (size%MOD >= m)
         with open(filePath, "rb") as file:
             for i in range(NumberofChuncks):
-                step = chunksize*i
-                file.seek(step*MOD + chunksize*m)
+                step = chunksize*i*MOD + chunksize*m
+                if step >= sz:
+                    break
+                file.seek(step)
+                if step+chunksize > sz:
+                    chunksize = sz - step
                 chunk = file.read(chunksize)
                 chunkNumber = (i*MOD+m).to_bytes(4,"big")
                 self.__downloadSocket.send_multipart([chunkNumber,chunk])

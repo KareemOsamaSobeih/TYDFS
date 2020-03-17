@@ -43,15 +43,13 @@ class Master(multiprocessing.Process):
             for file in iter(filesTable.keys()):
                 cnt = 0
                 srcNode = -1
-                print(filesTable[file]['nodes'])
                 for node in filesTable[file]['nodes']:
                     if aliveTable[node]['isAlive']:
                         cnt += 1
                         if srcNode == -1:
                             srcNode = node
                 if srcNode == -1:
-                    raise Exception("file:`%s` is lost and can't be replicated" % file)
-                print("srcNode = {}".format(srcNode))
+                    continue
                 while cnt < 3:
                     # print(file, cnt)
                     dstNode = -1
@@ -60,7 +58,8 @@ class Master(multiprocessing.Process):
                             dstNode = node
                             break
                     if dstNode == -1:
-                        raise Exception("Can't find a data keeper to replicate file: `%s`" % file)
+                        break
+                    print("srcNode = {}".format(srcNode))
                     print ("dstNode = {}".format(dstNode))
                     lock.acquire()
                     srcPID = 0
