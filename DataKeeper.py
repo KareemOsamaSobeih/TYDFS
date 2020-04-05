@@ -68,9 +68,7 @@ class DataKeeper(multiprocessing.Process):
         filePath = "data/DataKeeper/{}/{}".format(self.__ID, rec['fileName'])
         with open(filePath, "wb") as out_file:  # open for [w]riting as [b]inary
                 out_file.write(rec['file'])
-        # lockSave.acquire()
-        # self.__storage[rec['fileName']] = {'file': rec['file'], 'clientID': rec['clientID']}
-        # lockSave.release()
+        
         successMessage = {'fileName': rec['fileName'], 'clientID': rec['clientID'], 'nodeID': self.__ID, 'processID': self.__PID }
         self.__successSocket.send_json(successMessage)
         print("done")
