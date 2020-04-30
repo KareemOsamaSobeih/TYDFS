@@ -16,7 +16,7 @@ class Master(multiprocessing.Process):
         context = zmq.Context()
         self.__successSocket = context.socket(zmq.PULL)
         self.__clientSocket = context.socket(zmq.REP)
-        self.__clientSocket.bind("tcp://%s:%s" % (self.__IP, self.__clientPort))
+        self.__clientSocket.bind("tcp://*:%s" % (self.__clientPort))
         self.__dataKeeperSocket = context.socket(zmq.REQ)
         for dKIP in Conf.DATA_KEEPER_IPs:
             for dKPort in Conf.DATA_KEEPER_SUCCESS_PORTs:
