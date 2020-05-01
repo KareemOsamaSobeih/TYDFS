@@ -18,15 +18,15 @@ class DataKeeper(multiprocessing.Process):
     def __initConnection(self):
         context = zmq.Context()
         self.__masterSocket = context.socket(zmq.REP)
-        self.__masterSocket.bind("tcp://*:%s" % (self.__masterPort))
+        self.__masterSocket.bind("tcp://%s:%s" % (self.__IP, self.__masterPort))
         self.__successSocket = context.socket(zmq.PUSH)
-        self.__successSocket.bind("tcp://*:%s" % (self.__successPort))
+        self.__successSocket.bind("tcp://%s:%s" % (self.__IP, self.__successPort))
         self.__downloadSocket = context.socket(zmq.PUSH)
-        self.__downloadSocket.bind("tcp://*:%s" % (self.__downloadPort))
+        self.__downloadSocket.bind("tcp://%s:%s" % (self.__IP, self.__downloadPort))
         self.__uploadSocket = context.socket(zmq.PULL)
-        self.__uploadSocket.bind("tcp://*:%s" % (self.__uploadPort))
+        self.__uploadSocket.bind("tcp://%s:%s" % (self.__IP, self.__uploadPort))
         self.__replicaSendSocket = context.socket(zmq.REP)
-        self.__replicaSendSocket.bind("tcp://*:%s" % (self.__replicaPort))
+        self.__replicaSendSocket.bind("tcp://%s:%s" % (self.__IP, self.__replicaPort))
         self.__replicaRcvSocket = context.socket(zmq.REQ)
         self.__poller = zmq.Poller()
         self.__poller.register(self.__masterSocket, zmq.POLLIN)
@@ -68,7 +68,9 @@ class DataKeeper(multiprocessing.Process):
         filePath = "data/DataKeeper/{}/{}".format(self.__ID, rec['fileName'])
         with open(filePath, "wb") as out_file:  # open for [w]riting as [b]inary
                 out_file.write(rec['file'])
-        
+        # lockSave.acquire()
+        # self.__storage[rec['fileName']] = {'file': rec['file'], 'clientID': rec['clientID']}
+        # lockSave.release()
         successMessage = {'fileName': rec['fileName'], 'clientID': rec['clientID'], 'nodeID': self.__ID, 'processID': self.__PID }
         self.__successSocket.send_json(successMessage)
         print("done")
@@ -158,7 +160,7 @@ class DataKeeper(multiprocessing.Process):
     def __heartBeatsConfiguration(self):
         context = zmq.Context()
         self.__aliveSocket = context.socket(zmq.PUB)
-        self.__aliveSocket.bind("tcp://*:%s"%(Conf.ALIVE_PORT))
+        self.__aliveSocket.bind("tcp://%s:%s"%(self.__IP, Conf.ALIVE_PORT))
 
     def heartBeats(self):
         self.__heartBeatsConfiguration()
